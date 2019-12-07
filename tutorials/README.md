@@ -3,11 +3,9 @@
 These tutorials can be run via MyBinder.org without installing anything on your local computer. 
 There are just a few steps needed to get this working.
 
-* Click [this link](https://mybinder.org/v2/gh/bernhard-42/jupyter-cadquery/master?urlpath=lab&filepath=examples%2Fcadquery.ipynb) to open a Jupyter Lab instance with jupyter-cadquery extension installed.
-* Wait until the workbook loads. This can take awhile.
-* Open a Python 3 console.
-* Paste `! git clone https://github.com/jmwright/cadquery-contrib.git` in the code cell and hit the Shift+Enter keys.
+* Click [this link](https://hub.gke.mybinder.org/user/bernhard-42-jupyter-cadquery-5e6fxqwv/lab/tree/examples/install-cadquery-contrib.ipynb) to open a Jupyter Lab instance with the jupyter-cadquery extension installed.
+* Wait until the workbook loads. This could take some time if the workbook needs to be built from scratch.
+* Execute the code cell containing `! git clone https://github.com/jmwright/cadquery-contrib.git` by clicking on it and pressing the Shift+Enter keys.
 * Once you see "Unpacking objects...done" in the output, you should see a `cadquery-contrib` directory in the left sidebar.
-* Close the console.
-* Drill down into `cadquery-contrib/tutorials` and click on `Ex000 Start Here.ipynb`.
+* Drill down into the `cadquery-contrib/tutorials` directory and click on `Ex000 Start Here.ipynb`.
 * Enjoy
