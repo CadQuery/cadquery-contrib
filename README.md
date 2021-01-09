@@ -16,6 +16,7 @@ A place to share CadQuery scripts, modules, tutorials and projects
 * [Resin_Mold.py](examples/Resin_Mold.py) - A resin casting mold created to repair the strain-relief on an expensive cable
 * [Shelled_Cube_Inside_Chamfer_With_Logical_Selector_Operators.py](examples/Shelled_Cube_Inside_Chamfer_With_Logical_Selector_Operators.py) - Shows a somewhat more advanced use of selectors to chamfer the inside edges of a shelled cube
 * [tray.py](examples/tray.py) - Manual assembly example including export to DXF for laser cutting
+* [Tetrakaidecahedron.py](Tetrakaidecahedron/tray.py) - The Tetrakaidecahedron volume (Kelvin Cell) can pave 3D space and is often encountered in cristallography.
 
 ### Tutorials
 
