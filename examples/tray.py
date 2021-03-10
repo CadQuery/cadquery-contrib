@@ -100,9 +100,9 @@ show_object(assy)
 from path import Path
 from cadquery import exporters as exp
 
-# with Path('tray').mkdir_p():
-#     exp.exportDXF(cq.Workplane().rect(Ws,Hs).extrude(1).section(),'sheet.dxf')
-#     exp.exportDXF(base.section(),'base.dxf')
-#     exp.exportDXF(front_f.section(),'front.dxf')
-#     exp.exportDXF(make_divider().faces('>X').workplane().section(), 'divider.dxf')
-#     exp.exportDXF(make_spacer().section(), 'spacer.dxf')
+with Path('tray').mkdir_p():
+    exp.exportDXF(cq.Workplane().rect(Ws,Hs).extrude(1).section(),'sheet.dxf')
+    exp.exportDXF(base.section(),'base.dxf')
+    exp.exportDXF(front_f.section(),'front.dxf')
+    exp.exportDXF(make_divider().faces('>X').workplane().section(), 'divider.dxf')
+    exp.exportDXF(make_spacer().section(), 'spacer.dxf')
