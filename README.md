@@ -41,7 +41,7 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
 * [cylindrical_gear.py](examples/cylindrical_gear.py) - A cylindrical straight or helix gear
 
-    <img src="examples/images/gear.png" width="800"/>
+    <img src="examples/images/cylindrical_gear.png" width="800"/>
 
 * [Remote_Enclosure.py](examples/Remote_Enclosure.py) - An electronics enclosure created to be mounted on motorcycle handlebars
 * [Classic_OCC_Bottle.py](examples/Classic_OCC_Bottle.py) - Standard OCCT bottle example, implemented using the CadQuery API
