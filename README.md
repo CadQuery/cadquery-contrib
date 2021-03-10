@@ -19,6 +19,7 @@ A place to share CadQuery scripts, modules, tutorials and projects
     <img src="examples/images/parametric_enclosure.png" width="600"/>
 
 * [Reinforce_Junction_UsingFillet.py](examples/Reinforce_Junction_UsingFillet.py) - Example of using fillets to reinforce a joint, reducing stress concentrators at the joint
+
     <img src="examples/images/reinforce_junction_using_fillet.png" width="600"/>
 
 
