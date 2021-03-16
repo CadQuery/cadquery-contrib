@@ -16,7 +16,7 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
 * [Parametric_Enclosure.py](examples/Parametric_Enclosure.py) - Standard CadQuery example of an electronics enclosure with a base, fastener bosses, and a lid
 
-    <img src="examples/images/parametric_enclosure.png" width="600"/>
+    <img src="examples/images/Parametric_Enclosure.png" width="600"/>
 
 * [Reinforce_Junction_UsingFillet.py](examples/Reinforce_Junction_UsingFillet.py) - Example of using fillets to reinforce a joint, reducing stress concentrators at the joint
 
@@ -44,8 +44,17 @@ A place to share CadQuery scripts, modules, tutorials and projects
     <img src="examples/images/cylindrical_gear.png" width="600"/>
 
 * [Remote_Enclosure.py](examples/Remote_Enclosure.py) - An electronics enclosure created to be mounted on motorcycle handlebars
+
+    <img src="examples/images/Remote_Enclosure.png" width="600"/>
+
 * [Classic_OCC_Bottle.py](examples/Classic_OCC_Bottle.py) - Standard OCCT bottle example, implemented using the CadQuery API
+
+    <img src="examples/images/Classic_OCC_Bottle.png" width="600"/>
+
 * [Numpy.py](examples/Numpy.py) - Example of integrating Numpy with CadQuery
+
+    <img src="examples/images/Numpy.png" width="600"/>
+
 * [3D_Printer_Extruder_Support.py](examples/3D_Printer_Extruder_Support.py) - Designed for mounting hotend to an i3 X-carriage inspired by the P3steel Toolson
 
 ### Tutorials

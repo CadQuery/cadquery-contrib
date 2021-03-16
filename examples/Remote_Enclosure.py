@@ -7,7 +7,7 @@ showCover = True        # When true, the cover is rendered
 width = 2.2             # Nominal x dimension of the part
 height = 0.5            # Height from bottom top to the top of the top :P
 length = 1.5            # Nominal y dimension of the part
-trapezoidFudge = 0.7    # ratio of trapezoid bases. set to 1.0 for cube
+trapezoidFudge = 1.5    # ratio of trapezoid bases. set to 1.0 for cube
 xHoleOffset = 0.500     # Holes are distributed symmetrically about each axis
 yHoleOffset = 0.500
 zFilletRadius = 0.50    # Fillet radius of corners perp. to Z axis.
@@ -54,7 +54,7 @@ top = (base(height)
        .shell(-wallThickness)
        # cut five button holes into the top face in a cross pattern.
        .faces(">Z")
-       .workplane()
+       .workplane(centerOption="CenterOfMass")
        .pushPoints([(0,            0),
                     (-xHoleOffset, 0),
                     (0,           -yHoleOffset),
