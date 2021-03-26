@@ -57,6 +57,10 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
 * [3D_Printer_Extruder_Support.py](examples/3D_Printer_Extruder_Support.py) - Designed for mounting hotend to an i3 X-carriage inspired by the P3steel Toolson
 
+* [Involute_Gear.py](examples/Involute_Gear.py) - Fast involute gear generator.
+
+    <img src="examples/images/Involute_Gear.png" width="600"/>
+
 ### Tutorials
 
 * [Ex000 Start Here.ipynb](tutorials/Ex000%20Start%20Here.ipynb) - iPython notebook that is the entry point for a set of CadQuery tutorials
