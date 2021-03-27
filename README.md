@@ -59,7 +59,11 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
 * [Involute_Gear.py](examples/Involute_Gear.py) - Fast involute gear generator.
 
-    <img src="examples/images/Involute_Gear.png" width="600"/>
+    <img src="examples/images/Involute_Gear.png" width="600"/>   
+  
+* [Thread.py](examples/Thread.py) - Thread example.
+
+    <img src="examples/images/Thread.png" width="600"/>
 
 ### Tutorials
 
