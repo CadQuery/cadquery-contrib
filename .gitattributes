@@ -1,0 +1,7 @@
+# don't display diffs or treat the following as text files
+*.png -text -diff
+*.jpg -text -diff
+*.dxf -text -diff
+
+# Jupyter notebooks should be classified as documentation and not counted as lines of code
+*.ipynb linguist-documentation -diff -text
