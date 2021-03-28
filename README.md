@@ -65,6 +65,11 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
     <img src="examples/images/Thread.png" width="600"/>
 
+* [Hexagonal modular drawers](examples/hexagonal_drawers/assembly.py) - Inspired by [this on Prusa Printers](https://www.prusaprinters.org/prints/54113-hexagonal-organizer-system), these drawers are 3D printed (without needing supports) and clip together.
+
+    <img src="examples/hexagonal_drawers/hmd.png" width="600"/>
+    <img src="examples/hexagonal_drawers/hmd.jpg" width="600"/>
+
 ### Tutorials
 
 * [Ex000 Start Here.ipynb](tutorials/Ex000%20Start%20Here.ipynb) - iPython notebook that is the entry point for a set of CadQuery tutorials
