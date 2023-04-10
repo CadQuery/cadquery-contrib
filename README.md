@@ -69,6 +69,10 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
     <img src="examples/hexagonal_drawers/hmd.png" width="600"/>
     <img src="examples/hexagonal_drawers/hmd.jpg" width="600"/>
+    
+* [Digital sundial](https://github.com/lopezsolerluis/reloj-de-sol-digital-cadquery) - Inspired by [Mojoptix's digital sundial](https://www.thingiverse.com/thing:1068443) and derived from [my own version](https://github.com/lopezsolerluis/reloj-de-sol-digital) in OpenSCAD.
+
+    <img src="https://github.com/lopezsolerluis/reloj-de-sol-digital-cadquery/blob/main/sundial-cadquery.png" width="600"/>
 
 ### Tutorials
 
