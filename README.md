@@ -82,7 +82,7 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
     <img src="https://github.com/moOsama76/cadquery-photos/blob/main/Screenshot%202024-09-24%20022955.png" width = "600"/>
 
-* [Tiles any shape](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/grouped-tiles)
+* [Tiles any shape](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/grouped-tiles) - grid of tiles constrained to any 2D shape and seperated into individual groups
 
     <img src="https://github.com/moOsama76/cadquery-photos/blob/main/Screenshot%202024-09-24%20024349.png" width = "600"/>
 
