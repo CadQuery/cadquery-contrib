@@ -74,9 +74,13 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
     <img src="https://github.com/lopezsolerluis/reloj-de-sol-digital-cadquery/blob/main/sundial-cadquery.png" width="600"/>
 
-* [Truss Gherkin](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/examples/truss-gherkin-building)
+* [Truss Gherkin with spirals](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/examples/truss-gherkin-building) - Inspired by [3D Beast](https://www.youtube.com/watch?v=mwJQm70NRYY)
 
     <img src="https://github.com/moOsama76/cadquery-photos/blob/main/Screenshot%202024-09-24%20021459.png" width = "600"/>
+
+* [IQON Building following a spline](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/examples/Iqon-Building) - Inspired by [3D Beast](https://www.youtube.com/watch?v=wQvikT0DUCU)
+
+    <img src="https://github.com/moOsama76/cadquery-photos/blob/main/Screenshot%202024-09-24%20022955.png" width = "600"/>
 
 ### Tutorials
 
