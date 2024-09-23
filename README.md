@@ -74,6 +74,10 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
     <img src="https://github.com/lopezsolerluis/reloj-de-sol-digital-cadquery/blob/main/sundial-cadquery.png" width="600"/>
 
+* [Truss Gherkin](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/examples/truss-gherkin-building)
+
+    <img src="[https://github.com/lopezsolerluis/reloj-de-sol-digital-cadquery/blob/main/sundial-cadquery.png](https://drive.google.com/file/d/1xScnr7V7MAlPlb_nvvoBp7cIP2CeXF7y/view?usp=sharing)" width="600"/>
+
 ### Tutorials
 
 * [Ex000 Start Here.ipynb](tutorials/Ex000%20Start%20Here.ipynb) - iPython notebook that is the entry point for a set of CadQuery tutorials
