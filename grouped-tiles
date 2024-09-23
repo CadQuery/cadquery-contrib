@@ -1,0 +1,65 @@
+import cadquery as cq
+import random
+
+# Constants for cell dimensions and tile distances
+CELL_WIDTH = 1            # Width of each cell
+CELL_HEIGHT = 2           # Height of each cell
+GROUP_COUNT = 3           # Number of groups for color coding
+TILE_OFFSET_X = 0.001     # Distance between tiles along the X-axis
+TILE_OFFSET_Y = 0.001     # Distance between tiles along the Y-axis
+TILES_THICKNESS = 0.5
+
+# Define points for a spline curve
+spline_points = [
+    (0, 0, -0.25),
+    (5, 3, -0.25),
+    (8, 6, -0.25),
+    (0, 1, -0.25),
+    (0, 0, -0.25)
+]
+
+# Create and extrude the spline curve
+spline_curve = cq.Workplane("XY").spline(spline_points).close().extrude(TILES_THICKNESS)
+
+# Get the bounding box of the spline curve
+bounding_box = spline_curve.val().BoundingBox()
+min_x = bounding_box.xmin
+max_x = bounding_box.xmax
+min_y = bounding_box.ymin
+max_y = bounding_box.ymax
+
+# Calculate the number of rows and columns based on the bounding box positions
+GRID_ROWS = int((max_y - min_y) / CELL_HEIGHT) + 1
+GRID_COLS = int((max_x - min_x) / CELL_WIDTH) + 1
+
+# Create a grid for visualization
+grid = cq.Workplane("XY")
+for row in range(GRID_ROWS + 1):
+    horizontal_line = cq.Workplane("XY").moveTo(min_x, min_y + CELL_HEIGHT * row).lineTo(max_x, min_y + row * CELL_HEIGHT)
+    grid.add(horizontal_line)
+for col in range(GRID_COLS + 1):
+    vertical_line = cq.Workplane("XY").moveTo(min_x + col * CELL_WIDTH, min_y).lineTo(min_x + col * CELL_WIDTH, max_y)
+    grid.add(vertical_line)
+
+# Function to generate a random color
+def generate_random_color():
+    return cq.Color(random.random(), random.random(), random.random())
+
+# Create groups for isolating tiles with different colors
+tile_groups = [cq.Assembly() for _ in range(GROUP_COUNT)]
+group_colors = [generate_random_color() for _ in range(GROUP_COUNT)]
+
+# Generate and color tiles, assigning them to random groups
+for row in range(GRID_ROWS):
+    for col in range(GRID_COLS):
+        random_group_index = random.randint(0, GROUP_COUNT - 1)
+        tile_rect = cq.Workplane("XY").rect(CELL_WIDTH, CELL_HEIGHT).extrude(TILES_THICKNESS).translate((min_x + col * CELL_WIDTH + CELL_WIDTH / 2, min_y + row * CELL_HEIGHT + CELL_HEIGHT / 2, -0.25))
+        intersected_tile = spline_curve.intersect(tile_rect).translate((TILE_OFFSET_X * col, TILE_OFFSET_Y * row, 0))
+        tile_groups[random_group_index].add(intersected_tile, color=group_colors[random_group_index])
+
+# Combine all groups into one assembly
+combined_tiles = cq.Assembly()
+for group in tile_groups:
+    combined_tiles.add(group)
+    
+show_object(combined_tiles)
