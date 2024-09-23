@@ -76,7 +76,7 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
 * [Truss Gherkin](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/examples/truss-gherkin-building)
 
-    <img src="https://drive.google.com/file/d/1xScnr7V7MAlPlb_nvvoBp7cIP2CeXF7y/view?usp=sharing" width="600"/>
+    <img src="https://drive.google.com/file/d/1xScnr7V7MAlPlb_nvvoBp7cIP2CeXF7y/view?usp=sharing" height = "600" width="600"/>
 
 ### Tutorials
 
