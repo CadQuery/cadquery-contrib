@@ -82,6 +82,10 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
     <img src="https://github.com/moOsama76/cadquery-photos/blob/main/Screenshot%202024-09-24%20022955.png" width = "600"/>
 
+* [Tiles any shape](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/grouped-tiles)
+
+    <img src="https://github.com/moOsama76/cadquery-photos/blob/main/Screenshot%202024-09-24%20024349.png" width = "600"/>
+
 ### Tutorials
 
 * [Ex000 Start Here.ipynb](tutorials/Ex000%20Start%20Here.ipynb) - iPython notebook that is the entry point for a set of CadQuery tutorials
