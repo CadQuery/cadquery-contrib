@@ -1,0 +1,66 @@
+import cadquery as cq
+import math
+
+ROOMS = 12
+LEVELS = 10
+displacement = 0.4
+
+main_length = 1.15
+main_width = 1.15
+main_height = 1.15
+
+pocket_length = 0.85
+pocket_width = 0.4
+pocket_depth = 0.1
+pocket_y = -0.25
+
+path = [(0, 6, 0), (1, 6, 0), (4, 6, 0), (9, 6, 0), (12, 0, 0)]
+base_curve = cq.Workplane("XY").spline(path)
+max_y = max(path, key=lambda x: x[1])[1]
+
+cube = (
+    cq.Workplane("XY")
+    .box(main_length, main_width, main_height)
+)
+
+
+carved_room = (
+    cube
+    .faces(">X")  # Select the face on the positive X direction
+    .workplane(centerOption='CenterOfBoundBox')
+    .transformed(offset=(pocket_y, 0, 0))  # Offset in the local YZ plane
+    .rect(pocket_width, pocket_length)  # Pocket dimensions in the YZ plane
+    .cutBlind(-pocket_depth)
+    .transformed(offset=(0.5, 0, 0))
+    .rect(pocket_width, pocket_length)
+    .cutBlind(-pocket_depth)
+)
+#show_object(window.translate((path[0][0], path[0][1]+0.55, 0)), options={"color": "black", "alpha": 0.6})
+bigger_room =  (
+    cq.Workplane("XY")
+    .box(main_length+0.09, main_width+0.09, main_height+0.09)
+    .faces(">X")  # Select the face on the positive X direction
+    .workplane(centerOption='CenterOfBoundBox')
+    .transformed(offset=(pocket_y, 0, 0))  # Offset in the local YZ plane
+    .rect(pocket_width, pocket_length)  # Pocket dimensions in the YZ plane
+    .cutBlind(-pocket_depth)
+    .transformed(offset=(0.5, 0, 0))
+    .rect(pocket_width, pocket_length)
+    .cutBlind(-pocket_depth)
+)
+
+
+building = cq.Workplane("XY")
+for level in range(LEVELS):
+    remove_level = level%2
+    for room in range(ROOMS-remove_level):
+        param = (room)/(ROOMS-remove_level)
+        point_on_curve = base_curve.val().positionAt(param)
+        angle = point_on_curve.y*90/max_y
+        if level%2 == 0:
+            new_room = carved_room.translate((point_on_curve.x, point_on_curve.y, level*main_height)).rotateAboutCenter((0, 0, 1), angle)
+            building.add(new_room)
+        else:
+            new_room = bigger_room.translate((point_on_curve.x, point_on_curve.y, level*main_height)).rotateAboutCenter((0, 0, 1), angle)
+            building.add(new_room)
+show_object(building)
