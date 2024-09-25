@@ -1,0 +1,91 @@
+import cadquery as cq
+import math
+
+HEIGHT = 20
+BASE_RADIUS = 2.4
+TOP_RADIUS = 0.5
+LEVELS = 30
+TRUSS_COUNT = 24
+TRUSS_SIZE = 0.05
+CURVE_MODIFIERS = [(2.2, HEIGHT - HEIGHT/5), (2.7, HEIGHT/5)]
+
+def point_on_circle(radius, angle_degrees, z):
+    angle_rad = math.radians(angle_degrees)
+    x = radius * math.cos(angle_rad)
+    y = radius * math.sin(angle_rad)
+    return x, y, z
+
+assembly = cq.Assembly()
+
+
+# Basic structure points
+center_line = [(0, 0, 0), (0, 0, HEIGHT)]
+base = cq.Workplane("XY").circle(BASE_RADIUS).extrude(TRUSS_SIZE)
+top = cq.Workplane("XY").circle(TOP_RADIUS).extrude(TRUSS_SIZE).translate((0, 0, HEIGHT))
+
+side_spline_points = [point_on_circle(BASE_RADIUS,0,0),point_on_circle(CURVE_MODIFIERS[1][0], 0, CURVE_MODIFIERS[1][1]),  point_on_circle(CURVE_MODIFIERS[0][0],0,CURVE_MODIFIERS[0][1]) ,point_on_circle(TOP_RADIUS,0,HEIGHT)]
+side_spline = cq.Workplane("XY").spline(side_spline_points)
+
+assembly.add(base, color=cq.Color(5/255, 7/255, 40/255))
+assembly.add(top, color=cq.Color(5/255, 7/255, 40/255))
+for i in range(LEVELS-1):
+    level_height = (i+1)*HEIGHT/LEVELS
+    point_on_curve = side_spline.val().positionAt(level_height/HEIGHT)
+    level = cq.Workplane("XY").circle(point_on_curve.x).translate((0, 0, level_height))
+    
+for i in range(LEVELS):
+    current_level_height = i*HEIGHT/LEVELS
+    next_level_height = (i+1)*HEIGHT/LEVELS
+    
+    current_point_on_curve = side_spline.val().positionAt(current_level_height/HEIGHT)
+    next_point_on_curve = side_spline.val().positionAt(next_level_height/HEIGHT)
+    # Sepaparation of for loops is because CQ-Editor refuses intense computations in a single loop
+    for j in range(TRUSS_COUNT):
+        current_point = point_on_circle(current_point_on_curve.x, j/TRUSS_COUNT*360, current_level_height)
+        next_point = point_on_circle(next_point_on_curve.x, (j+1)/TRUSS_COUNT*360, next_level_height)
+        
+        truss = cq.Workplane("XY").polyline((current_point, next_point))
+        sweep_square = cq.Workplane("XY").rect(TRUSS_SIZE, TRUSS_SIZE)
+        swept_truss = sweep_square.sweep(truss).translate((current_point))
+    
+        assembly.add(swept_truss, color=cq.Color("white"))
+    for j in range(TRUSS_COUNT):
+        next_point = point_on_circle(next_point_on_curve.x, (j+1)/TRUSS_COUNT*360, next_level_height)
+        last_point = point_on_circle(current_point_on_curve.x, (j+2)/TRUSS_COUNT*360, current_level_height)
+        truss = cq.Workplane("XY").polyline((next_point, last_point))
+        sweep_square = cq.Workplane("XY").rect(TRUSS_SIZE, TRUSS_SIZE)
+        swept_truss = sweep_square.sweep(truss).translate((last_point))
+        assembly.add(swept_truss, color=cq.Color("white"))
+    for j in range(TRUSS_COUNT):
+        current_point = point_on_circle(current_point_on_curve.x, j/TRUSS_COUNT*360, current_level_height)
+        next_point = point_on_circle(next_point_on_curve.x, (j+1)/TRUSS_COUNT*360, next_level_height)
+        last_point = point_on_circle(current_point_on_curve.x, (j+2)/TRUSS_COUNT*360, current_level_height)
+        further_point = point_on_circle(next_point_on_curve.x, (j+3)/TRUSS_COUNT*360, next_level_height)
+        edge1 = cq.Edge.makeLine(cq.Vector(*current_point), cq.Vector(*next_point))
+        edge2 = cq.Edge.makeLine(cq.Vector(*next_point), cq.Vector(*last_point))
+        edge3 = cq.Edge.makeLine(cq.Vector(*last_point), cq.Vector(*current_point))
+        
+        wire = cq.Wire.assembleEdges([edge1, edge2, edge3])
+        face = cq.Face.makeFromWires(wire)
+        edge1 = cq.Edge.makeLine(cq.Vector(*next_point), cq.Vector(*last_point))
+        edge2 = cq.Edge.makeLine(cq.Vector(*last_point), cq.Vector(*further_point))
+        edge3 = cq.Edge.makeLine(cq.Vector(*further_point), cq.Vector(*next_point))
+        
+        wire = cq.Wire.assembleEdges([edge1, edge2, edge3])
+        face2 = cq.Face.makeFromWires(wire)
+        dark_color = (5/255, 7/255, 40/255)
+        bright_color = (204/255, 255/255, 255/255)
+        if j == i%TRUSS_COUNT or j == (i+TRUSS_COUNT//3)%TRUSS_COUNT or j ==(i+TRUSS_COUNT*2//3)%TRUSS_COUNT or i > LEVELS*4/5:
+            assembly.add(face, color=cq.Color(*dark_color))
+            assembly.add(face2, color=cq.Color(*dark_color))
+        elif (j+2)%TRUSS_COUNT == i%TRUSS_COUNT or (j+2)%TRUSS_COUNT == (i+TRUSS_COUNT//3)%TRUSS_COUNT or (j+2)%TRUSS_COUNT ==(i+TRUSS_COUNT*2//3)%TRUSS_COUNT:
+            assembly.add(face, color=cq.Color(*bright_color))
+            assembly.add(face2, color=cq.Color(*bright_color))
+        elif (j+4)%TRUSS_COUNT == i%TRUSS_COUNT or (j+4)%TRUSS_COUNT == (i+TRUSS_COUNT//3)%TRUSS_COUNT or (j+4)%TRUSS_COUNT ==(i+TRUSS_COUNT*2//3)%TRUSS_COUNT:
+            assembly.add(face, color=cq.Color(*bright_color))
+            assembly.add(face2, color=cq.Color(*bright_color))
+        elif (j+6)%TRUSS_COUNT == i%TRUSS_COUNT or (j+6)%TRUSS_COUNT == (i+TRUSS_COUNT//3)%TRUSS_COUNT or (j+6)%TRUSS_COUNT ==(i+TRUSS_COUNT*2//3)%TRUSS_COUNT:
+            assembly.add(face, color=cq.Color(*bright_color))
+            assembly.add(face2, color=cq.Color(*bright_color))            
+show_object(assembly)
+#assembly.save("tower.glb")

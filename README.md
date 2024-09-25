@@ -74,6 +74,18 @@ A place to share CadQuery scripts, modules, tutorials and projects
 
     <img src="https://github.com/lopezsolerluis/reloj-de-sol-digital-cadquery/blob/main/sundial-cadquery.png" width="600"/>
 
+* [Truss Gherkin with spirals](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/examples/truss-gherkin-building) - Inspired by [3D Beast](https://www.youtube.com/watch?v=mwJQm70NRYY)
+
+    <img src="https://github.com/moOsama76/cadquery-photos/blob/main/Screenshot%202024-09-24%20021459.png" width = "600"/>
+
+* [IQON Building following a spline](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/examples/Iqon-Building) - Inspired by [3D Beast](https://www.youtube.com/watch?v=wQvikT0DUCU)
+
+    <img src="https://github.com/moOsama76/cadquery-photos/blob/main/Screenshot%202024-09-24%20022955.png" width = "600"/>
+
+* [Tiles any shape](https://github.com/moOsama76/cadquery-contrib/blob/moOsama76-patch-1/grouped-tiles) - grid of tiles constrained to any 2D shape and seperated into individual groups
+
+    <img src="https://github.com/moOsama76/cadquery-photos/blob/main/Screenshot%202024-09-24%20024349.png" width = "600"/>
+
 ### Tutorials
 
 * [Ex000 Start Here.ipynb](tutorials/Ex000%20Start%20Here.ipynb) - iPython notebook that is the entry point for a set of CadQuery tutorials

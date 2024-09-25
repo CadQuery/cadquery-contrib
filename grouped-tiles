@@ -1,0 +1,51 @@
+import cadquery as cq
+from cadquery import exporters
+import random
+
+ROWS = 8
+COLS = 8
+CELL_WIDTH = 1
+CELL_HEIGHT = 1
+GROUPS = 3
+TILES_DISTANCE_X = 0.001
+TILES_DISTANCE_Y = 0.001
+
+ # To visualize the grid
+grid = cq.Workplane("XY")
+for i in range(ROWS+1):
+    new_line = cq.Workplane("XY").moveTo(0, CELL_HEIGHT*i).lineTo(COLS*CELL_WIDTH, i*CELL_HEIGHT)
+    grid.add(new_line)
+for i in range(COLS+1):
+    new_line = cq.Workplane("XY").moveTo(i*CELL_WIDTH, 0).lineTo(i*CELL_WIDTH, CELL_HEIGHT*ROWS)
+    grid.add(new_line)
+show_object(grid)
+
+
+points = [
+    (0, 0, -0.25),
+    (5, 3, -0.25),
+    (8, 6, -0.25),
+    (0, 1, -0.25),
+    (0, 0, -0.25)
+]
+
+curve = cq.Workplane("XY").spline(points).close()
+solidified_curve = curve.extrude(0.5)
+
+isolating = [cq.Assembly() for _ in range(GROUPS)]
+colors = ["black", "white", "blue"]
+
+for i in range(ROWS):
+    for j in range(COLS):
+        random_group = random.randint(0, GROUPS-1)
+        current_rect = cq.Workplane("XY").rect(CELL_WIDTH, CELL_HEIGHT).extrude(0.5).translate((i*CELL_WIDTH+CELL_WIDTH/2, j*CELL_HEIGHT+CELL_HEIGHT/2, -0.25))
+        extracted_cell = solidified_curve.intersect(current_rect).translate((TILES_DISTANCE_X*i, TILES_DISTANCE_Y*j, 0))
+        isolating[random_group].add(extracted_cell, color=cq.Color(colors[random_group]))
+
+
+combined_groups = cq.Assembly()
+for i in range(GROUPS):
+    combined_groups.add(isolating[i])
+show_object(combined_groups)
+show_object(curve)
+#combined_groups.save("tiles_any_shape.glb")
