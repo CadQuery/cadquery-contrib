@@ -1,0 +1,368 @@
+# This is a declaration of PartCAD package.
+# See https://partcad.org/ and https://github.com/openvmp/partcad for more information.
+
+name: /pub/examples/scripts/cadquery-contrib
+desc: A place to share cadquery scripts, modules, and projects
+partcad: ">=0.7.14"
+
+parts:
+  examples/3D_Printer_Extruder_Support:
+    type: cadquery
+    parameters:
+      main_plate_size_y:
+        type: float
+        desc: The size of the main plate in the y direction
+        default: 67
+      main_plate_size_x:
+        type: float
+        desc: The size of the main plate in the x direction
+        default: 50
+      main_plate_thickness:
+        type: float
+        desc: The thickness of the main plate
+        default: 10
+      wing_size_x:
+        type: float
+        desc: The size of the side wing supporting the bridge in x direction
+        default: 10
+      wing_size_y:
+        type: float
+        desc: The size of the side wing supporting the bridge in y direction
+        default: 10
+      bridge_depth:
+        type: float
+        desc: The depth of the bridge
+        default: 35
+      support_depth:
+        type: float
+        desc: The depth of the bridge support
+        default: 18
+      cutout_depth:
+        type: float
+        desc: The depth of the hotend cutout
+        default: 15
+      cutout_rad:
+        type: float
+        desc: The radius of the cutout (cf groove mount sizes of E3D hotends)
+        default: 8
+      cutout_offset:
+        type: float
+        desc: The delta radius of the second cutout (cf groove mount sizes of E3D hotends)
+        default: 2
+      extruder_hole_spacing:
+        type: float
+        desc: The spacing of the extruder mounting holes (Wade's geared extruder)
+        default: 50
+      m4_predrill:
+        type: float
+        desc: The predrill diameter for M4 tapping
+        default: 3.7
+      m3_predrill:
+        type: float
+        desc: The predrill diameter for M3 tapping
+        default: 2.5
+      m3_cbore:
+        type: float
+        desc: The counterbore size for M3 socket screw
+        default: 5
+      mounting_hole_spacing:
+        type: float
+        desc: The spacing of the mounting holes for attaching to x-carriage
+        default: 28
+      aux_hole_depth:
+        type: float
+        desc: The depth of the auxiliary holes at the sides of the object
+        default: 6
+      aux_hole_spacing:
+        type: float
+        desc: The spacing of the auxiliary holes within a group
+        default: 5
+      aux_hole_N:
+        type: int
+        desc: The number of the auxiliary hole per group
+        default: 2
+  examples/Braille:
+    type: cadquery
+    parameters:
+      text_lines:
+        type: array
+        default: ["⠠ ⠉ ⠁ ⠙ ⠠ ⠟ ⠥ ⠻ ⠽"]
+      horizontal_interdot: 2.5
+      vertical_interdot: 2.5
+      horizontal_intercell: 6.0
+      vertical_interline: 10.0
+      dot_height: 0.5
+      dot_diameter: 1.3
+      base_thickness: 1.5
+  examples/Classic_OCC_Bottle:
+    type: cadquery
+    parameters:
+      L:
+        type: float
+        desc: The length of the bottle
+        default: 20
+      w:
+        type: float
+        desc: The width of the bottle
+        default: 6
+      t:
+        type: float
+        desc: The thickness of the bottle
+        default: 3
+  # cylindrical_gear is broken
+  # examples/cylindrical_gear:
+  #   type: cadquery
+  #   parameters:
+  #     alpha:
+  #       type: float
+  #       desc: The pressure angle of the gear
+  #       default: 20.0
+  #     m:
+  #       type: float
+  #       desc: The module of the gear
+  #       default: 1
+  #     z1:
+  #       type: int
+  #       desc: The number of teeth of the gear
+  #       default: 20
+  #     z2:
+  #       type: int
+  #       desc: The number of teeth of the gear
+  #       default: 12
+  examples/door:
+    type: cadquery
+    cwd: examples
+    parameters:
+      H: 400.0
+      W: 200.0
+      D: 350.0
+      SLOT_D: 6.0
+      PANEL_T: 3.0
+      HANDLE_D: 20.0
+      HANDLE_L: 50.0
+      HANDLE_W: 4.0
+  # Involute_Gear is broken
+  # examples/Involute_Gear:
+  #   type: cadquery
+  examples/Numpy:
+    type: cadquery
+    parameters:
+      side: 10.0
+      offset: 5.0
+  examples/Panel_with_Various_Holes_for_Connector_Installation:
+    type: cadquery
+    parameters:
+      width: 400.0
+      height: 500.0
+      thickness: 2.0
+  examples/Parametric_Enclosure:
+    type: cadquery
+    showObject: result
+    parameters:
+      p_outerWidth:
+        type: float
+        desc: Outer width of box enclosure
+        default: 100.0
+      p_outerLength:
+        type: float
+        desc: Outer length of box enclosure
+        default: 150.0
+      p_outerHeight:
+        type: float
+        desc: Outer height of box enclosure
+        default: 50.0
+      p_thickness:
+        type: float
+        desc: Thickness of the box walls
+        default: 3.0
+      p_sideRadius:
+        type: float
+        desc: Radius for the curves around the sides of the box
+        default: 10.0
+      p_topAndBottomRadius:
+        type: float
+        desc: Radius for the curves on the top and bottom edges of the box
+        default: 2.0
+      p_screwpostInset:
+        type: float
+        desc: How far in from the edges the screw posts should be place.
+        default: 12.0
+      p_screwpostID:
+        type: float
+        desc: Inner Diameter of the screw post holes, should be roughly screw diameter not including threads
+        default: 4.0
+      p_screwpostOD:
+        type: float
+        desc: Outer Diameter of the screw posts.\nDetermines overall thickness of the posts
+        default: 10.0
+      p_boreDiameter:
+        type: float
+        desc: Diameter of the counterbore hole, if any
+        default: 8.0
+      p_boreDepth:
+        type: float
+        desc: Depth of the counterbore hole, if
+        default: 1.0
+      p_countersinkDiameter:
+        type: float
+        desc: Outer diameter of countersink.  Should roughly match the outer diameter of the screw head
+        default: 0.0
+      p_countersinkAngle:
+        type: float
+        desc: Countersink angle (complete angle between opposite sides, not from center to one side)
+        default: 90.0
+      p_flipLid:
+        type: bool
+        desc: Whether to place the lid with the top facing down or not.
+        default: true
+      p_lipHeight:
+        type: float
+        desc: Height of lip on the underside of the lid. Sits inside the box body for a snug fit.
+        default: 1.0
+  examples/Reinforce_Junction_UsingFillet:
+    type: cadquery
+  examples/Remote_Enclosure:
+    type: cadquery
+    parameters:
+      exploded:
+        type: bool
+        desc: When true, moves the base away from the top so we see
+        default: false
+      showTop:
+        type: bool
+        desc: When true, the top is rendered.
+        default: true
+      showCover:
+        type: bool
+        desc: When true, the cover is rendered
+        default: true
+      width:
+        type: float
+        desc: Nominal x dimension of the part
+        default: 2.2
+      height:
+        type: float
+        desc: Height from bottom top to the top of the top :P
+        default: 0.5
+      length:
+        type: float
+        desc: Nominal y dimension of the part
+        default: 1.5
+      trapezoidFudge:
+        type: float
+        desc: ratio of trapezoid bases. set to 1.0 for cube
+        default: 1.5
+      xHoleOffset:
+        type: float
+        desc: Holes are distributed symmetrically about each axis
+        default: 0.500
+      yHoleOffset:
+        type: float
+        default: 0.500
+      zFilletRadius:
+        type: float
+        desc: Fillet radius of corners perp. to Z axis.
+        default: 0.50
+      yFilletRadius:
+        type: float
+        desc: Fillet radius of the top edge of the case
+        default: 0.250
+      lipHeight:
+        type: float
+        desc: The height of the lip on the inside of the cover
+        default: 0.1
+      wallThickness:
+        type: float
+        desc: Wall thickness for the case
+        default: 0.06
+      coverThickness:
+        type: float
+        desc: Thickness of the cover plate
+        default: 0.2
+      holeRadius:
+        type: float
+        desc: Button hole radius
+        default: 0.30
+      counterSyncAngle:
+        type: int
+        desc: Countersink angle.
+        default: 100
+  examples/Resin_Mold:
+    type: cadquery
+    parameters:
+      mount_holes: True
+      mw:
+        type: float
+        desc: mold width
+        default: 40
+      mh:
+        type: float
+        desc: mold height
+        default: 13
+      ml:
+        type: float
+        desc: mold length
+        default: 120
+      wd:
+        type: float
+        desc: wire diameter
+        default: 6
+      rt:
+        type: float
+        desc: resin thickness
+        default: 7
+      rl:
+        type: float
+        desc: resin length
+        default: 50
+      rwpl:
+        type: float
+        desc: resin to wire pass length
+        default: 10
+      pf:
+        type: float
+        desc: pocket fillet
+        default: 18
+      mhd:
+        type: float
+        desc: hole diameter
+        default: 7
+      mht:
+        type: float
+        desc: hole distance from edge
+        default: 3
+      fhd:
+        type: float
+        desc: filling hole diameter
+        default: 6
+  examples/Shelled_Cube_Inside_Chamfer_With_Logical_Selector_Operators:
+    type: cadquery
+  examples/Tetrakaidecahedron:
+    type: cadquery
+    parameters:
+      L: 20.0
+      W: 20.0
+      H: 20.0
+      D: 10.0
+      WT: 1.0
+      FRO: 3.0
+      FRI: 2.0
+      NPS: 6
+  examples/Thread:
+    type: cadquery
+    parameters:
+      radius: 4.0
+      pitch: 2.0
+      height: 4.0
+      radius_eps: 0.5
+      eps: 0.001
+  examples/tray:
+    type: cadquery
+    parameters:
+      Ws: 1200.0
+      Hs: 600.0
+      W: 770.0
+      H: 460.0
+      d: 5.0
+      N: 7
+      h: 50.0

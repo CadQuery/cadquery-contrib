@@ -9,7 +9,7 @@ import cadquery as cq
 # text_lines is a list of text lines.
 # "CadQuery" in braille (converted with braille-converter:
 # https://github.com/jpaugh/braille-converter.git).
-text_lines = [u'⠠ ⠉ ⠁ ⠙ ⠠ ⠟ ⠥ ⠻ ⠽']
+text_lines = (u'⠠ ⠉ ⠁ ⠙ ⠠ ⠟ ⠥ ⠻ ⠽')
 # See http://www.tiresias.org/research/reports/braille_cell.htm for examples
 # of braille cell geometry.
 horizontal_interdot = 2.5
