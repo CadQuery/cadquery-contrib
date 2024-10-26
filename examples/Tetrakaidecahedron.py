@@ -45,22 +45,22 @@ cell_s = cell_h0
 
 # ADD HEXAGONS
 cell_h1 = cell_h0.translate((-dc*sin(A*pi/180), dc*cos(A*pi/180), 0))
-V1 = (-dcc*cos(A*pi/180), dcc*sin(A*pi/180), 0)
-V2 = (0, dcc, 0) 
+V1 = [-dcc*cos(A*pi/180), dcc*sin(A*pi/180), 0]
+V2 = [0, dcc, 0]
 cell_h1 = cell_h1.rotate(V1,V2,BH)
 cell_h1 = cell_h1.cut(cell_h0)
 cell_s = cell_s.union(cell_h1, glue=True)
 
 cell_h2 = cell_h0.translate((-dc*sin(A*pi/180), -dc*cos(A*pi/180), 0))
-V1 = (-dcc*cos(A*pi/180), -dcc*sin(A*pi/180), 0)
-V2 = (0, -dcc, 0) 
+V1 = [-dcc*cos(A*pi/180), -dcc*sin(A*pi/180), 0]
+V2 = [0, -dcc, 0]
 cell_h2 = cell_h2.rotate(V1,V2,-BH)
 cell_h2 = cell_h2.cut(cell_h0)
 cell_s = cell_s.union(cell_h2, glue=True)
 
 cell_h3 = cell_h0.translate((dc, 0, 0))
-V1 = (dc/2, -dcc/2, 0)
-V2 = (dc/2, dcc/2, 0)
+V1 = [dc/2, -dcc/2, 0]
+V2 = [dc/2, dcc/2, 0]
 cell_h3 = cell_h3.rotate(V1,V2,-BH)
 cell_h3 = cell_h3.cut(cell_h0)
 cell_s = cell_s.union(cell_h3, glue=True)
