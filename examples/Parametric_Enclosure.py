@@ -1,3 +1,5 @@
+import cadquery as cq
+
 # parameter definitions
 p_outerWidth = 100.0 #Outer width of box enclosure
 p_outerLength = 150.0 #Outer length of box enclosure

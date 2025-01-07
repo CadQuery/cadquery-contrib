@@ -1,3 +1,4 @@
+import cadquery as cq
 from cadquery import *
 from math import *
 

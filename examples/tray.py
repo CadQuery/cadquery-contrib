@@ -1,3 +1,4 @@
+import cadquery as cq
 from cadquery import Assembly, Color, Location as Loc, Vector as Vec
 from numpy import linspace,diff
 
