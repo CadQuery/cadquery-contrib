@@ -1,3 +1,4 @@
+import cadquery as cq
 from cadquery import Workplane, Edge, Wire, Vector
 from math import *
 
