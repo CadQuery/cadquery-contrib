@@ -37,33 +37,22 @@ Configuration in Claude Code (~/.claude/settings.json):
 
 import asyncio
 import base64
-import tempfile
-import traceback
 from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent, ImageContent
 
-import cadquery as cq
-from cadquery import cqgi
-from cadquery.occ_impl.exporters.svg import getSVG
-from cadquery.occ_impl.exporters import export
+from cadquery_core import (
+    VIEWS,
+    handle_render,
+    handle_inspect,
+    handle_get_parameters,
+    handle_export,
+)
 
 
 server = Server("cadquery")
-
-# Standard view projection directions
-VIEWS = {
-    "isometric": (-1.75, 1.1, 5),      # Default isometric view
-    "front": (0, -1, 0),                # Looking at XZ plane from -Y
-    "back": (0, 1, 0),                  # Looking at XZ plane from +Y
-    "top": (0, 0, 1),                   # Looking at XY plane from +Z
-    "bottom": (0, 0, -1),               # Looking at XY plane from -Z
-    "left": (-1, 0, 0),                 # Looking at YZ plane from -X
-    "right": (1, 0, 0),                 # Looking at YZ plane from +X
-    "isometric_back": (1.75, -1.1, 5),  # Isometric from opposite corner
-}
 
 
 @server.list_tools()
@@ -89,7 +78,7 @@ async def list_tools() -> list[Tool]:
                     "view": {
                         "type": "string",
                         "description": "Camera view angle. Options: isometric (default), front, back, top, bottom, left, right, isometric_back",
-                        "enum": ["isometric", "front", "back", "top", "bottom", "left", "right", "isometric_back"],
+                        "enum": list(VIEWS.keys()),
                         "default": "isometric",
                     },
                     "multi_view": {
@@ -179,34 +168,6 @@ async def list_tools() -> list[Tool]:
     ]
 
 
-def _extract_shape(build_result, env):
-    """Extract the shape from a build result or environment."""
-    # First try to get from show_object() calls
-    if build_result.first_result is not None:
-        return build_result.first_result.shape
-
-    # Fall back to 'result' variable in environment
-    if "result" in env:
-        return env["result"]
-
-    return None
-
-
-def _render_svg(shape, view_name: str, width: int, height: int, show_hidden: bool = True) -> str:
-    """Render a shape to SVG from a specific view angle."""
-    projection_dir = VIEWS.get(view_name, VIEWS["isometric"])
-
-    opts = {
-        "width": width,
-        "height": height,
-        "projectionDir": projection_dir,
-        "showAxes": view_name == "isometric" or view_name == "isometric_back",
-        "showHidden": show_hidden,
-    }
-
-    return getSVG(shape, opts=opts)
-
-
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent | ImageContent]:
     """Handle tool calls."""
@@ -225,202 +186,69 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent | 
 
 async def _handle_render(arguments: dict[str, Any]) -> list[TextContent | ImageContent]:
     """Execute CadQuery code and return rendered SVG image(s)."""
-    code = arguments["code"]
-    view = arguments.get("view", "isometric")
-    multi_view = arguments.get("multi_view", False)
-    width = arguments.get("width", 800)
-    height = arguments.get("height", 600)
-    show_hidden = arguments.get("show_hidden", True)
+    result = handle_render(
+        arguments["code"],
+        view=arguments.get("view", "isometric"),
+        multi_view=arguments.get("multi_view", False),
+        width=arguments.get("width", 800),
+        height=arguments.get("height", 600),
+        show_hidden=arguments.get("show_hidden", True),
+    )
 
-    try:
-        # Parse and execute the script using CQGI
-        model = cqgi.parse(code)
-        result = model.build()
+    if result.error:
+        return [TextContent(type="text", text=result.error)]
 
-        if result.exception:
-            return [TextContent(
+    if len(result.svg_contents) > 1:
+        # Multi-view
+        items: list[TextContent | ImageContent] = [
+            TextContent(
                 type="text",
-                text=f"Execution error:\n{traceback.format_exception(type(result.exception), result.exception, result.exception.__traceback__)}"
-            )]
-
-        shape = _extract_shape(result, result.env)
-
-        if shape is None:
-            return [TextContent(
-                type="text",
-                text="No shape produced. Use show_object(shape) or assign to 'result' variable."
-            )]
-
-        # Get the underlying Shape object if it's a Workplane
-        if hasattr(shape, "val"):
-            shape = shape.val()
-
-        if multi_view:
-            # Return multiple views for complex models
-            views_to_render = ["isometric", "front", "top", "right"]
-            results = []
-
-            for view_name in views_to_render:
-                svg_content = _render_svg(shape, view_name, width, height, show_hidden)
-                svg_data = base64.standard_b64encode(svg_content.encode("utf-8")).decode("utf-8")
-                results.append(ImageContent(type="image", data=svg_data, mimeType="image/svg+xml"))
-
-            # Add a text description of the views
-            results.insert(0, TextContent(
-                type="text",
-                text=f"Rendered {len(views_to_render)} views: {', '.join(views_to_render)}"
-            ))
-            return results
-        else:
-            # Single view
-            svg_content = _render_svg(shape, view, width, height, show_hidden)
-            svg_data = base64.standard_b64encode(svg_content.encode("utf-8")).decode("utf-8")
-            return [ImageContent(type="image", data=svg_data, mimeType="image/svg+xml")]
-
-    except SyntaxError as e:
-        return [TextContent(type="text", text=f"Syntax error: {e}")]
-    except Exception as e:
-        return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
+                text=f"Rendered {len(result.view_names)} views: {', '.join(result.view_names)}",
+            )
+        ]
+        for svg in result.svg_contents:
+            svg_data = base64.standard_b64encode(svg.encode("utf-8")).decode("utf-8")
+            items.append(ImageContent(type="image", data=svg_data, mimeType="image/svg+xml"))
+        return items
+    else:
+        svg_data = base64.standard_b64encode(
+            result.svg_contents[0].encode("utf-8")
+        ).decode("utf-8")
+        return [ImageContent(type="image", data=svg_data, mimeType="image/svg+xml")]
 
 
 async def _handle_inspect(arguments: dict[str, Any]) -> list[TextContent | ImageContent]:
     """Execute CadQuery code and return geometry information."""
-    code = arguments["code"]
+    result = handle_inspect(arguments["code"])
 
-    try:
-        model = cqgi.parse(code)
-        result = model.build()
+    if result.error:
+        return [TextContent(type="text", text=result.error)]
 
-        if result.exception:
-            return [TextContent(
-                type="text",
-                text=f"Execution error: {result.exception}"
-            )]
-
-        shape = _extract_shape(result, result.env)
-
-        if shape is None:
-            return [TextContent(
-                type="text",
-                text="No shape produced. Use show_object(shape) or assign to 'result' variable."
-            )]
-
-        # Get the underlying Shape object if it's a Workplane
-        if hasattr(shape, "val"):
-            shape = shape.val()
-
-        # Gather geometry information
-        bb = shape.BoundingBox()
-        info_lines = [
-            "Geometry Information:",
-            f"  Bounding Box:",
-            f"    X: {bb.xmin:.4f} to {bb.xmax:.4f} (size: {bb.xlen:.4f})",
-            f"    Y: {bb.ymin:.4f} to {bb.ymax:.4f} (size: {bb.ylen:.4f})",
-            f"    Z: {bb.zmin:.4f} to {bb.zmax:.4f} (size: {bb.zlen:.4f})",
-        ]
-
-        # Try to get volume (only works for solids)
-        try:
-            volume = shape.Volume()
-            info_lines.append(f"  Volume: {volume:.4f}")
-        except Exception:
-            pass
-
-        # Try to get surface area
-        try:
-            area = shape.Area()
-            info_lines.append(f"  Surface Area: {area:.4f}")
-        except Exception:
-            pass
-
-        # Try to get center of mass
-        try:
-            com = shape.Center()
-            info_lines.append(f"  Center of Mass: ({com.x:.4f}, {com.y:.4f}, {com.z:.4f})")
-        except Exception:
-            pass
-
-        # Count topological entities
-        try:
-            info_lines.append(f"  Topology:")
-            info_lines.append(f"    Solids: {len(shape.Solids())}")
-            info_lines.append(f"    Faces: {len(shape.Faces())}")
-            info_lines.append(f"    Edges: {len(shape.Edges())}")
-            info_lines.append(f"    Vertices: {len(shape.Vertices())}")
-        except Exception:
-            pass
-
-        info_lines.append(f"  Build Time: {result.buildTime:.4f}s")
-
-        return [TextContent(type="text", text="\n".join(info_lines))]
-
-    except Exception as e:
-        return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
+    return [TextContent(type="text", text=result.text)]
 
 
 async def _handle_get_parameters(arguments: dict[str, Any]) -> list[TextContent | ImageContent]:
     """Parse CadQuery code and extract parameters."""
-    code = arguments["code"]
+    result = handle_get_parameters(arguments["code"])
 
-    try:
-        model = cqgi.parse(code)
-        params = model.metadata.parameters
+    if result.error:
+        return [TextContent(type="text", text=result.error)]
 
-        if not params:
-            return [TextContent(type="text", text="No parameters found in the script.")]
-
-        lines = ["Parameters found:"]
-        for name, param in params.items():
-            type_name = param.varType.__name__ if param.varType else "unknown"
-            lines.append(f"  {name}: {type_name} = {param.default_value}")
-            if param.desc:
-                lines.append(f"    Description: {param.desc}")
-            if param.valid_values:
-                lines.append(f"    Valid values: {param.valid_values}")
-
-        return [TextContent(type="text", text="\n".join(lines))]
-
-    except SyntaxError as e:
-        return [TextContent(type="text", text=f"Syntax error: {e}")]
-    except Exception as e:
-        return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
+    return [TextContent(type="text", text=result.text)]
 
 
 async def _handle_export(arguments: dict[str, Any]) -> list[TextContent | ImageContent]:
     """Execute CadQuery code and export to file."""
-    code = arguments["code"]
-    filename = arguments["filename"]
-    export_format = arguments.get("format")
+    result = handle_export(
+        arguments["code"],
+        arguments["filename"],
+        arguments.get("format"),
+    )
 
-    try:
-        model = cqgi.parse(code)
-        result = model.build()
+    if result.error:
+        return [TextContent(type="text", text=result.error)]
 
-        if result.exception:
-            return [TextContent(
-                type="text",
-                text=f"Execution error: {result.exception}"
-            )]
-
-        shape = _extract_shape(result, result.env)
-
-        if shape is None:
-            return [TextContent(
-                type="text",
-                text="No shape produced. Use show_object(shape) or assign to 'result' variable."
-            )]
-
-        # Get the underlying Shape if it's a Workplane
-        if hasattr(shape, "val"):
-            shape = shape.val()
-
-        # Export
-        export(shape, filename, exportType=export_format)
-
-        return [TextContent(type="text", text=f"Exported to: {filename}")]
-
-    except Exception as e:
-        return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
+    return [TextContent(type="text", text=f"Exported to: {result.filename}")]
 
 
 async def main():
