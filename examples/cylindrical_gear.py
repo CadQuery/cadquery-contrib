@@ -66,6 +66,7 @@ def cylindrical_gear(m, z, alpha, b, helix_angle = None):
             wire = cq.Workplane("XY").tag("base").transformed(rotate=(0,0,180/z)).parametricCurve(involute(r_b), stop = -STOP, makeWire=False)        
 
             end_point_a = wire.val().endPoint().toTuple() #storing the global coord of the point for later use
+            right_start = right.val().startPoint() # the approximated involute doesn't start exactly at (r_b, 0), so connect to its real start point
             if r_b < r_f:                
                 raise ValueError("r_b is smaller than r_f, your gear is undercut, try changing yours input parameter (use smaller alpah angle")
                 # A gear could work even if it's undercut, I was just lazy to take care of it
@@ -77,7 +78,7 @@ def cylindrical_gear(m, z, alpha, b, helix_angle = None):
                 wire = (wire.workplaneFromTagged("base")
                     .moveTo(start_arc_root_pt[0], start_arc_root_pt[1] )
                     .radiusArc((r_f,0),r_f)
-                    .hLine(r_b-r_f)
+                    .lineTo(right_start.x, right_start.y)
                     .parametricCurve(involute(r_b), stop = STOP, makeWire=False)
                     .radiusArc(end_point_a,r_a)
                     .combine()
