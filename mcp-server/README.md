@@ -1,12 +1,19 @@
-# CadQuery MCP Server
+# CadQuery MCP Server & CLI
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that enables AI assistants like Claude to execute CadQuery scripts and render 3D CAD models.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server **and** a standalone command-line tool that enable AI assistants (like Claude) and shell-based workflows to execute CadQuery scripts and render 3D CAD models.
+
+The package installs two entry points:
+
+- `cadquery-mcp` — MCP server for AI assistants
+- `cadquery-cli` — CLI for direct use from a terminal or shell scripts
+
+Both share the same underlying engine (`cadquery_core`) so behavior is identical.
 
 ## Features
 
-- **render** - Execute CadQuery code and return SVG images of the 3D model
-  - Multiple camera angles: isometric, front, back, top, bottom, left, right
-  - Multi-view mode for complex models
+- **render** - Execute CadQuery code and produce SVG images of the 3D model
+  - Multiple camera angles: isometric, isometric_back, front, back, top, bottom, left, right
+  - Multi-view mode (isometric, front, top, right) for complex models
   - Configurable image dimensions
   - Hidden line rendering
 
@@ -16,7 +23,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
   - Center of mass
   - Topology counts (solids, faces, edges, vertices)
 
-- **get_parameters** - Extract customizable parameters from CadQuery scripts
+- **get_parameters** / `params` - Extract customizable parameters from CadQuery scripts
 
 - **export** - Export models to various formats
   - STEP, STL, SVG, DXF, AMF, 3MF, VRML, BREP
@@ -25,10 +32,14 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 
 ### Prerequisites
 
-CadQuery must be installed first. The recommended method is via conda:
+CadQuery must be installed first. The recommended method is via conda or mamba:
 
 ```bash
+# conda
 conda install -c conda-forge cadquery
+
+# mamba (drop-in replacement for conda; default in miniforge)
+mamba install -c conda-forge cadquery
 ```
 
 ### Install from Source
@@ -52,7 +63,7 @@ pip install pytest
 pytest test_cadquery_mcp_server.py -v
 ```
 
-## Configuration
+## MCP Server Configuration
 
 ### Claude Code
 
@@ -82,7 +93,7 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 }
 ```
 
-**Note:** If using conda, you may need to specify the full path:
+**Note:** If using conda/mamba, you may need to specify the full path:
 
 ```json
 {
@@ -94,7 +105,40 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 }
 ```
 
-## Usage Examples
+## CLI Usage
+
+The `cadquery-cli` command exposes the same functionality as the MCP server, for use in terminals, scripts, or CI.
+
+```bash
+# Render a script to an SVG (isometric by default)
+cadquery-cli render script.py -o output.svg
+
+# Render multiple views (isometric, front, top, right) into separate files
+cadquery-cli render script.py --multi-view -o views.svg
+
+# Specific view + custom dimensions
+cadquery-cli render script.py --view front --width 1200 --height 900
+
+# Inspect geometry (bounding box, volume, surface area, etc.)
+cadquery-cli inspect script.py
+
+# Extract parameters defined in the script
+cadquery-cli params script.py
+
+# Export to STEP / STL / etc. (format inferred from filename)
+cadquery-cli export script.py -o model.step
+cadquery-cli export script.py -o model.stl
+
+# Inline code instead of a script file
+cadquery-cli render -c "import cadquery as cq; result = cq.Workplane('XY').box(1,2,3)" -o box.svg
+
+# Read a script from stdin
+cat script.py | cadquery-cli render - -o output.svg
+```
+
+Run `cadquery-cli --help` (or `cadquery-cli <subcommand> --help`) for the full flag list.
+
+## MCP Usage Examples
 
 Once configured, you can ask Claude to create 3D models:
 
@@ -137,7 +181,7 @@ import cadquery as cq
 result = cq.Workplane('XY').box(width, height, depth)
 ```
 
-Use the `get_parameters` tool to extract these for modification.
+Use the `get_parameters` tool (MCP) or `cadquery-cli params` (CLI) to extract these for modification.
 
 ### Exporting Models
 
@@ -145,7 +189,7 @@ Export to STEP for manufacturing or STL for 3D printing:
 
 > "Export this model as a STEP file to ~/models/bracket.step"
 
-## API Reference
+## API Reference (MCP tools)
 
 ### render
 
@@ -154,7 +198,7 @@ Execute CadQuery code and return rendered image(s).
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | code | string | required | CadQuery Python code to execute |
-| view | string | "isometric" | Camera angle (isometric, front, back, top, bottom, left, right, isometric_back) |
+| view | string | "isometric" | Camera angle (isometric, isometric_back, front, back, top, bottom, left, right) |
 | multi_view | boolean | false | Return multiple views |
 | width | integer | 800 | Image width in pixels |
 | height | integer | 600 | Image height in pixels |
@@ -186,7 +230,7 @@ Export the model to a file.
 | filename | string | required | Output filename |
 | format | string | auto | Export format (STEP, STL, SVG, DXF, AMF, 3MF, VRML, BREP) |
 
-## Writing CadQuery Scripts for MCP
+## Writing CadQuery Scripts for MCP / CLI
 
 Scripts should either:
 
