@@ -4,10 +4,11 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that 
 
 ## Features
 
-- **render** - Execute CadQuery code and return SVG images of the 3D model
+- **render** - Execute CadQuery code and return rendered images of the 3D model (PNG or SVG)
   - Multiple camera angles: isometric, front, back, top, bottom, left, right
   - Multi-view mode for complex models
   - Configurable image dimensions
+  - Format selection (PNG by default for inline chat and LLM vision, or SVG)
   - Hidden line rendering
 
 - **inspect** - Get geometry information about a shape
@@ -114,7 +115,7 @@ result = (
 )
 ```
 
-And return a rendered SVG image of the model.
+And return a rendered image of the model (PNG by default).
 
 ### Multi-View Rendering
 
@@ -156,6 +157,7 @@ Execute CadQuery code and return rendered image(s).
 | code | string | required | CadQuery Python code to execute |
 | view | string | "isometric" | Camera angle (isometric, front, back, top, bottom, left, right, isometric_back) |
 | multi_view | boolean | false | Return multiple views |
+| format | string | "png" | Image format: "png" (default, ideal for LLM vision and chat display) or "svg" |
 | width | integer | 800 | Image width in pixels |
 | height | integer | 600 | Image height in pixels |
 | show_hidden | boolean | true | Show hidden lines |
