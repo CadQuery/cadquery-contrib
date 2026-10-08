@@ -43,12 +43,29 @@ class TestMCPServer:
         assert "get_parameters" in tool_names
         assert "export" in tool_names
 
-    def test_render_svg_simple_box(self):
-        """Test SVG rendering of a simple box."""
+    def test_render_default_png(self):
+        """Test default PNG rendering of a simple box."""
         from cadquery_mcp_server import _handle_render
 
         result = asyncio.run(_handle_render({
             "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(10, 20, 30)",
+        }))
+
+        assert len(result) == 1
+        assert result[0].type == "image"
+        assert result[0].mimeType == "image/png"
+
+        # Decode and verify PNG header
+        png_data = base64.b64decode(result[0].data)
+        assert png_data.startswith(b"\x89PNG\r\n\x1a\n")
+
+    def test_render_svg_explicit(self):
+        """Test SVG rendering of a simple box when requested."""
+        from cadquery_mcp_server import _handle_render
+
+        result = asyncio.run(_handle_render({
+            "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(10, 20, 30)",
+            "format": "svg",
         }))
 
         assert len(result) == 1
@@ -70,7 +87,7 @@ import cadquery as cq
 box = cq.Workplane('XY').box(5, 5, 5)
 show_object(box)
 """
-        result = asyncio.run(_handle_render({"code": code}))
+        result = asyncio.run(_handle_render({"code": code, "format": "svg"}))
 
         assert len(result) == 1
         assert result[0].type == "image"
@@ -287,9 +304,10 @@ result = (
 
         assert len(result) == 1
         assert result[0].type == "image"
+        assert result[0].mimeType == "image/png"
 
-        svg_content = base64.b64decode(result[0].data).decode("utf-8")
-        assert "<svg" in svg_content
+        png_content = base64.b64decode(result[0].data)
+        assert png_content.startswith(b"\x89PNG\r\n\x1a\n")
 
     def test_render_with_dimensions(self):
         """Test that width/height parameters are accepted."""
@@ -302,9 +320,9 @@ result = (
         }))
 
         assert result[0].type == "image"
-        # SVG should be generated successfully
-        svg_content = base64.b64decode(result[0].data).decode("utf-8")
-        assert "<svg" in svg_content
+        assert result[0].mimeType == "image/png"
+        png_content = base64.b64decode(result[0].data)
+        assert png_content.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 class TestMCPServerEdgeCases:
@@ -357,8 +375,9 @@ class TestMCPServerViews:
 
         assert len(result) == 1
         assert result[0].type == "image"
-        svg_content = base64.b64decode(result[0].data).decode("utf-8")
-        assert "<svg" in svg_content
+        assert result[0].mimeType == "image/png"
+        png_content = base64.b64decode(result[0].data)
+        assert png_content.startswith(b"\x89PNG\r\n\x1a\n")
 
     def test_render_top_view(self):
         """Test rendering from top view."""
@@ -402,20 +421,32 @@ class TestMCPServerViews:
         # Check all 4 images
         for i in range(1, 5):
             assert result[i].type == "image"
-            assert result[i].mimeType == "image/svg+xml"
+            assert result[i].mimeType == "image/png"
 
     def test_multi_view_content(self):
-        """Test that multi_view images have valid SVG content."""
+        """Test that multi_view images have valid image content."""
         from cadquery_mcp_server import _handle_render
 
+        # Test PNG multi-view (default)
         result = asyncio.run(_handle_render({
             "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(10, 10, 10)",
             "multi_view": True,
         }))
 
-        # Verify each image is valid SVG
         for i in range(1, 5):
-            svg_content = base64.b64decode(result[i].data).decode("utf-8")
+            png_content = base64.b64decode(result[i].data)
+            assert png_content.startswith(b"\x89PNG\r\n\x1a\n")
+
+        # Test SVG multi-view
+        result_svg = asyncio.run(_handle_render({
+            "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(10, 10, 10)",
+            "multi_view": True,
+            "format": "svg",
+        }))
+
+        for i in range(1, 5):
+            assert result_svg[i].mimeType == "image/svg+xml"
+            svg_content = base64.b64decode(result_svg[i].data).decode("utf-8")
             assert "<svg" in svg_content
             assert "</svg>" in svg_content
 
@@ -431,12 +462,14 @@ result = cq.Workplane('XY').box(20, 20, 10).faces('>Z').workplane().hole(5)
         result_with_hidden = asyncio.run(_handle_render({
             "code": code,
             "show_hidden": True,
+            "format": "svg",
         }))
 
         # Render without hidden lines
         result_without_hidden = asyncio.run(_handle_render({
             "code": code,
             "show_hidden": False,
+            "format": "svg",
         }))
 
         svg_with = base64.b64decode(result_with_hidden[0].data).decode("utf-8")
