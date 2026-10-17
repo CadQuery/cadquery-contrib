@@ -54,22 +54,15 @@ MULTI_VIEW_ANGLES = ["isometric", "front", "top", "right"]
 @dataclass
 class RenderResult:
     """Result of a render operation."""
-    svg_contents: list[str] = field(default_factory=list)
+    images: list[bytes] = field(default_factory=list)
+    mime_type: str = ""
     view_names: list[str] = field(default_factory=list)
     error: Optional[str] = None
-    png_contents: list[bytes] = field(default_factory=list)
 
 
 @dataclass
-class InspectResult:
-    """Result of an inspect operation."""
-    text: str = ""
-    error: Optional[str] = None
-
-
-@dataclass
-class ParamsResult:
-    """Result of a get_parameters operation."""
+class TextResult:
+    """Result of a geometry inspection or parameter query."""
     text: str = ""
     error: Optional[str] = None
 
@@ -85,7 +78,41 @@ class ExportResult:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _extract_shape(build_result, env):
+def _opacity(value):
+    """Validate opacity before passing it to OCCT or VTK."""
+    if not 0 <= value <= 1:
+        raise ValueError("Opacity must be between 0 (transparent) and 1 (opaque).")
+    return value
+
+
+def _display_color(options) -> cq.Color | None:
+    """Read CQ-editor display options, with rgba taking precedence."""
+    if "rgba" in options:
+        r, g, b, alpha = options["rgba"]
+        options = {"color": (r, g, b), "alpha": alpha}
+
+    color = options.get("color")
+    if isinstance(color, str):
+        color = cq.Color(color)
+    elif color is not None and not isinstance(color, cq.Color):
+        components = tuple(color)
+        if len(components) not in (3, 4):
+            raise ValueError("Display colors must contain RGB or RGBA components.")
+        # CQ-editor selects the RGB scale from the first component's type.
+        byte_rgb = isinstance(components[0], int)
+        rgb = tuple(value / 255 for value in components[:3]) if byte_rgb else components[:3]
+        alpha = components[3] if len(components) == 4 else 1.0
+        if byte_rgb and isinstance(alpha, int):
+            alpha /= 255
+        color = cq.Color(*rgb, _opacity(alpha))
+
+    if color is None and "alpha" not in options:
+        return None
+    r, g, b, alpha = color.toTuple() if color is not None else (0.8, 0.8, 0.8, 1.0)
+    return cq.Color(r, g, b, _opacity(options.get("alpha", alpha)))
+
+
+def _extract_shape(build_result):
     """Preserve all show_object outputs and their display colors."""
     displayed = build_result.results
     if len(displayed) == 1 and not displayed[0].options:
@@ -94,15 +121,9 @@ def _extract_shape(build_result, env):
         assembly = cq.Assembly(name="displayed")
         for index, item in enumerate(displayed):
             opts = item.options or {}
-            color = opts.get("color")
-            if color is not None and not isinstance(color, cq.Color):
-                color = cq.Color(color) if isinstance(color, str) else cq.Color(*color)
-            if "alpha" in opts:
-                rgb = color.toTuple()[:3] if color is not None else (0.8, 0.8, 0.8)
-                color = cq.Color(*rgb, opts["alpha"])
-            assembly.add(item.shape, name=f"object_{index}", color=color)
+            assembly.add(item.shape, name=f"object_{index}", color=_display_color(opts))
         return assembly
-    return env.get("result")
+    return build_result.env.get("result")
 
 
 def _to_occ_shape(shape):
@@ -129,7 +150,7 @@ def _execute_code(code: str):
             )
             return None, f"Execution error:\n{''.join(tb)}"
 
-        shape = _extract_shape(result, result.env)
+        shape = _extract_shape(result)
         if shape is None:
             return None, "No shape produced. Use show_object(shape) or assign to 'result' variable."
         return shape, None
@@ -142,12 +163,10 @@ def _execute_code(code: str):
 def render_svg(shape, view_name: str, width: int, height: int,
                show_hidden: bool = True) -> str:
     """Render an OCC shape to an SVG string from a specific view angle."""
-    projection_dir = VIEWS.get(view_name, VIEWS["isometric"])
-
     opts = {
         "width": width,
         "height": height,
-        "projectionDir": projection_dir,
+        "projectionDir": VIEWS[view_name],
         "showAxes": view_name in ("isometric", "isometric_back"),
         "showHidden": show_hidden,
     }
@@ -162,7 +181,7 @@ def render_png(shape, view_name: str, width: int, height: int) -> bytes:
         vtkRenderer, vtkRenderWindow, vtkWindowToImageFilter,
     )
     from vtkmodules.vtkIOImage import vtkPNGWriter
-    import vtkmodules.vtkRenderingOpenGL2  # register the rendering backend
+    import vtkmodules.vtkRenderingOpenGL2  # noqa: F401 - registers the rendering backend
 
     assembly = shape if isinstance(shape, cq.Assembly) else cq.Assembly(
         shape, color=cq.Color(0.7, 0.75, 0.8)
@@ -212,6 +231,7 @@ def handle_render(code: str, *, view: str = "isometric",
             return RenderResult(error="Render error: image_format must be 'svg' or 'png'.")
         if view not in VIEWS:
             return RenderResult(error=f"Render error: unknown view '{view}'.")
+        # Reject boolean dimensions.
         if not all(type(size) is int and 16 <= size <= 4096 for size in (width, height)):
             return RenderResult(error="Render error: width and height must be integers from 16 to 4096.")
         shape, err = _execute_code(code)
@@ -220,26 +240,31 @@ def handle_render(code: str, *, view: str = "isometric",
 
         names = list(MULTI_VIEW_ANGLES) if multi_view else [view]
         if image_format == "png":
-            pngs = [render_png(shape, name, width, height) for name in names]
-            return RenderResult(png_contents=pngs, view_names=names)
-        svgs = [render_svg(shape, name, width, height, show_hidden) for name in names]
-        return RenderResult(svg_contents=svgs, view_names=names)
+            images = [render_png(shape, name, width, height) for name in names]
+            mime_type = "image/png"
+        else:
+            images = [
+                render_svg(shape, name, width, height, show_hidden).encode("utf-8")
+                for name in names
+            ]
+            mime_type = "image/svg+xml"
+        return RenderResult(images=images, mime_type=mime_type, view_names=names)
     except Exception as e:
         return RenderResult(error=f"Render error: {type(e).__name__}: {e}")
 
 
-def handle_inspect(code: str) -> InspectResult:
+def handle_inspect(code: str) -> TextResult:
     """Execute CadQuery code and return geometry information."""
     try:
         shape, err = _execute_code(code)
         if err:
-            return InspectResult(error=err)
+            return TextResult(error=err)
 
         shape = _to_occ_shape(shape)
         bb = shape.BoundingBox()
         lines = [
             "Geometry Information:",
-            f"  Bounding Box:",
+            "  Bounding Box:",
             f"    X: {bb.xmin:.4f} to {bb.xmax:.4f} (size: {bb.xlen:.4f})",
             f"    Y: {bb.ymin:.4f} to {bb.ymax:.4f} (size: {bb.ylen:.4f})",
             f"    Z: {bb.zmin:.4f} to {bb.zmax:.4f} (size: {bb.zlen:.4f})",
@@ -262,26 +287,28 @@ def handle_inspect(code: str) -> InspectResult:
             pass
 
         try:
-            lines.append("  Topology:")
-            lines.append(f"    Solids: {len(shape.Solids())}")
-            lines.append(f"    Faces: {len(shape.Faces())}")
-            lines.append(f"    Edges: {len(shape.Edges())}")
-            lines.append(f"    Vertices: {len(shape.Vertices())}")
+            lines.extend([
+                "  Topology:",
+                f"    Solids: {len(shape.Solids())}",
+                f"    Faces: {len(shape.Faces())}",
+                f"    Edges: {len(shape.Edges())}",
+                f"    Vertices: {len(shape.Vertices())}",
+            ])
         except Exception:
             pass
 
-        return InspectResult(text="\n".join(lines))
+        return TextResult(text="\n".join(lines))
     except Exception as e:
-        return InspectResult(error=f"Inspect error: {type(e).__name__}: {e}")
+        return TextResult(error=f"Inspect error: {type(e).__name__}: {e}")
 
 
-def handle_get_parameters(code: str) -> ParamsResult:
+def handle_get_parameters(code: str) -> TextResult:
     """Parse CadQuery code and extract parameters."""
     try:
         model = cqgi.parse(code)
         params = model.metadata.parameters
         if not params:
-            return ParamsResult(text="No parameters found in the script.")
+            return TextResult(text="No parameters found in the script.")
 
         lines = ["Parameters found:"]
         for name, param in params.items():
@@ -292,11 +319,11 @@ def handle_get_parameters(code: str) -> ParamsResult:
             if param.valid_values:
                 lines.append(f"    Valid values: {param.valid_values}")
 
-        return ParamsResult(text="\n".join(lines))
+        return TextResult(text="\n".join(lines))
     except SyntaxError as e:
-        return ParamsResult(error=f"Syntax error: {e}")
+        return TextResult(error=f"Syntax error: {e}")
     except Exception as e:
-        return ParamsResult(error=f"Error: {type(e).__name__}: {e}")
+        return TextResult(error=f"Parameter error: {type(e).__name__}: {e}")
 
 
 def handle_export(code: str, filename: str,
@@ -307,9 +334,18 @@ def handle_export(code: str, filename: str,
         if err:
             return ExportResult(error=err)
 
-        destination = Path(filename)
+        destination = Path(filename).expanduser().absolute()
         fmt = (export_format or destination.suffix.lstrip(".")).upper()
         fmt = {"STP": "STEP"}.get(fmt, fmt)
+        if not destination.parent.is_dir():
+            return ExportResult(error=(
+                f"Export error: parent directory '{destination.parent}' "
+                "does not exist or is not a directory."
+            ))
+        if not fmt:
+            return ExportResult(error=(
+                f"Export error: cannot infer format from '{filename}'; pass format explicitly."
+            ))
         with tempfile.TemporaryDirectory(
             prefix=f".{destination.name}.", dir=destination.parent,
         ) as directory:
@@ -321,6 +357,6 @@ def handle_export(code: str, filename: str,
             if not temporary.is_file() or temporary.stat().st_size == 0:
                 raise RuntimeError("Exporter did not write a non-empty file.")
             temporary.replace(destination)
-        return ExportResult(filename=filename)
+        return ExportResult(filename=str(destination))
     except Exception as e:
         return ExportResult(error=f"Export error: {type(e).__name__}: {e}")

@@ -30,6 +30,7 @@ For command-line workflows, use the existing
 
 Shapes, Workplanes with multiple objects, nested assemblies, and multiple
 `show_object()` outputs are supported. Failed MCP tool calls set `isError: true`.
+All tool schemas reject unrecognized arguments.
 
 ## Installation
 
@@ -225,7 +226,11 @@ Extract customizable parameters from a script.
 
 ### export
 
-Export the model to a file.
+Export the model to a file. `~` expands to the server user's home directory;
+relative paths are interpreted from the server's working directory. Successful
+exports report the absolute destination path. Parent directories must exist.
+If the destination is a symlink, a successful export replaces the link and leaves
+its target unchanged. Supply `format` when the filename has no extension.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -247,6 +252,22 @@ Scripts should either:
    box = cq.Workplane('XY').box(1, 2, 3)
    show_object(box)
    ```
+
+`show_object()` accepts CQ-editor-style display options. `color` accepts RGB or
+RGBA tuples, color names, and `cq.Color` objects. The first RGB component sets
+the scale: integers use 0–255; floats use 0–1. In byte RGB tuples, an integer
+fourth component also uses 0–255 (128 is approximately half opaque); a float
+fourth component uses 0–1. In normalized RGB tuples, the fourth component uses
+0–1, including integer 0 and 1.
+
+`alpha` is opacity from 0 (fully transparent) to 1 (fully opaque), matching
+current CQ-editor, and overrides opacity embedded in `color`. The `rgba` option
+accepts `(r, g, b, opacity)` and overrides both `color` and `alpha`. Its RGB values
+follow the same scaling rule, but its opacity always uses 0–1. For example:
+
+```python
+show_object(result, options={"color": (64, 164, 223), "alpha": 0.75})
+```
 
 Assemblies may be assigned to `result` or passed to `show_object()`. Multiple
 displayed objects are collected into an assembly, including display colors:

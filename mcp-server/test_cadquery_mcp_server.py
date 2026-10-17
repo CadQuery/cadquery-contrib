@@ -23,7 +23,7 @@ from types import SimpleNamespace
 
 
 # ============================================================================
-# Core module tests (no MCP dependency required)
+# CAD operation tests
 # ============================================================================
 
 class TestCore:
@@ -44,10 +44,11 @@ class TestCore:
         )
 
         assert result.error is None
-        assert len(result.svg_contents) == 1
-        assert "<svg" in result.svg_contents[0]
-        assert "</svg>" in result.svg_contents[0]
-        assert "<path" in result.svg_contents[0]
+        assert len(result.images) == 1
+        assert result.mime_type == "image/svg+xml"
+        assert b"<svg" in result.images[0]
+        assert b"</svg>" in result.images[0]
+        assert b"<path" in result.images[0]
 
     def test_render_with_show_object(self):
         """Test SVG rendering using show_object() instead of result variable."""
@@ -57,8 +58,8 @@ class TestCore:
         result = handle_render(code)
 
         assert result.error is None
-        assert len(result.svg_contents) == 1
-        assert "<svg" in result.svg_contents[0]
+        assert len(result.images) == 1
+        assert b"<svg" in result.images[0]
 
     def test_render_no_shape_error(self):
         """Test that render returns an error when no shape is produced."""
@@ -93,7 +94,7 @@ class TestCore:
             view="front",
         )
         assert result.error is None
-        assert len(result.svg_contents) == 1
+        assert len(result.images) == 1
         assert result.view_names == ["front"]
 
     def test_render_all_views(self):
@@ -104,7 +105,7 @@ class TestCore:
         for view_name in VIEWS.keys():
             result = handle_render(code, view=view_name)
             assert result.error is None, f"View '{view_name}' failed: {result.error}"
-            assert "<svg" in result.svg_contents[0]
+            assert b"<svg" in result.images[0]
 
     def test_render_multi_view(self):
         """Test that multi_view returns 4 SVGs."""
@@ -116,12 +117,12 @@ class TestCore:
         )
 
         assert result.error is None
-        assert len(result.svg_contents) == 4
+        assert len(result.images) == 4
         assert len(result.view_names) == 4
         assert "isometric" in result.view_names
         assert "front" in result.view_names
-        for svg in result.svg_contents:
-            assert "<svg" in svg
+        for svg in result.images:
+            assert b"<svg" in svg
 
     def test_render_dimensions(self):
         """Test that width/height parameters are accepted."""
@@ -133,7 +134,7 @@ class TestCore:
             height=300,
         )
         assert result.error is None
-        assert "<svg" in result.svg_contents[0]
+        assert b"<svg" in result.images[0]
 
     def test_render_show_hidden(self):
         """Test that show_hidden option affects output."""
@@ -147,7 +148,7 @@ class TestCore:
         assert result_with.error is None
         assert result_without.error is None
         # SVG with hidden lines should have more content
-        assert len(result_with.svg_contents[0]) > len(result_without.svg_contents[0])
+        assert len(result_with.images[0]) > len(result_without.images[0])
 
     def test_render_empty_code(self):
         """Test handling of empty code."""
@@ -314,15 +315,12 @@ result = (
 """
         result = handle_render(code)
         assert result.error is None
-        assert "<svg" in result.svg_contents[0]
+        assert b"<svg" in result.images[0]
 
 
 # ============================================================================
-# MCP server tests (require mcp package)
+# MCP server tests
 # ============================================================================
-
-mcp = pytest.importorskip("mcp", reason="MCP package not installed")
-
 
 class TestMCPServer:
     """Test the MCP server wrapper layer."""
@@ -346,9 +344,9 @@ class TestMCPServer:
 
     def test_render_returns_image_content(self):
         """Test that MCP render returns ImageContent with base64 SVG."""
-        from cadquery_mcp_server import _handle_render
+        from cadquery_mcp_server import _render_tool
 
-        result = asyncio.run(_handle_render({
+        result = asyncio.run(_render_tool({
             "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(10, 20, 30)",
             "image_format": "svg",
         }))
@@ -362,18 +360,18 @@ class TestMCPServer:
 
     def test_render_error_returns_text_content(self):
         """Test that MCP render errors return TextContent."""
-        from cadquery_mcp_server import _handle_render
+        from cadquery_mcp_server import _render_tool
 
-        result = asyncio.run(_handle_render({"code": "x = 1"}))
+        result = asyncio.run(_render_tool({"code": "x = 1"}))
         assert result.isError is True
         assert result.content[0].type == "text"
         assert "No shape produced" in result.content[0].text
 
     def test_multi_view_returns_multiple_images(self):
         """Test that multi_view returns text + 4 images."""
-        from cadquery_mcp_server import _handle_render
+        from cadquery_mcp_server import _render_tool
 
-        result = asyncio.run(_handle_render({
+        result = asyncio.run(_render_tool({
             "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(10, 10, 10)",
             "multi_view": True,
             "image_format": "svg",
@@ -388,9 +386,9 @@ class TestMCPServer:
 
     def test_inspect_returns_text_content(self):
         """Test that MCP inspect returns TextContent."""
-        from cadquery_mcp_server import _handle_inspect
+        from cadquery_mcp_server import _inspect_tool
 
-        result = asyncio.run(_handle_inspect({
+        result = asyncio.run(_inspect_tool({
             "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(1, 1, 1)",
         }))
 
@@ -424,7 +422,7 @@ class TestMCPServer:
 @pytest.mark.parametrize("multi_view", [False, True])
 def test_renderer_failure_is_a_cad_error(monkeypatch, image_format, multi_view):
     import cadquery_core as core
-    from cadquery_mcp_server import _handle_render
+    from cadquery_mcp_server import _render_tool
 
     def render(shape, view, *args):
         if not multi_view or view == "front":
@@ -439,12 +437,12 @@ def test_renderer_failure_is_a_cad_error(monkeypatch, image_format, multi_view):
     }
     result = core.handle_render(**arguments)
     assert result.error == "Render error: RuntimeError: renderer failed"
-    assert result.svg_contents == []
-    assert result.png_contents == []
+    assert result.images == []
+    assert result.mime_type == ""
     assert result.view_names == []
 
     # Call the adapter directly: the dispatcher must not be needed to catch this.
-    response = asyncio.run(_handle_render(arguments))
+    response = asyncio.run(_render_tool(arguments))
     assert response.isError is True
     assert response.content[0].text == result.error
 
@@ -463,7 +461,7 @@ def test_parser_failure_stays_in_cad_layer(monkeypatch, tmp_path, name):
         arguments["filename"] = str(tmp_path / "unused.step")
     result = getattr(core, f"handle_{name}")(**arguments)
     assert "RuntimeError: parser failed" in result.error
-    response = asyncio.run(getattr(server, f"_handle_{name}")(arguments))
+    response = asyncio.run(getattr(server, f"_{name}_tool")(arguments))
     assert response.isError is True
     assert response.content[0].text == result.error
     assert list(tmp_path.iterdir()) == []
@@ -471,26 +469,44 @@ def test_parser_failure_stays_in_cad_layer(monkeypatch, tmp_path, name):
 
 def test_inspection_formatting_failure_stays_in_cad_layer(monkeypatch):
     import cadquery_core as core
-    from cadquery_mcp_server import _handle_inspect
+    from cadquery_mcp_server import _inspect_tool
 
     # BoundingBox succeeds, but its result cannot be formatted.
     shape = SimpleNamespace(BoundingBox=lambda: object())
     monkeypatch.setattr(core, "_execute_code", lambda code: (shape, None))
     result = core.handle_inspect("unused")
     assert result.error.startswith("Inspect error: AttributeError:")
-    response = asyncio.run(_handle_inspect({"code": "unused"}))
+    response = asyncio.run(_inspect_tool({"code": "unused"}))
     assert response.isError is True
     assert response.content[0].text == result.error
 
 
 def test_parameter_formatting_failure_stays_in_cad_layer(monkeypatch):
     import cadquery_core as core
-    from cadquery_mcp_server import _handle_get_parameters
+    from cadquery_mcp_server import _get_parameters_tool
 
     model = SimpleNamespace(metadata=SimpleNamespace(parameters={"broken": object()}))
     monkeypatch.setattr(core.cqgi, "parse", lambda code: model)
     result = core.handle_get_parameters("unused")
-    assert result.error.startswith("Error: AttributeError:")
-    response = asyncio.run(_handle_get_parameters({"code": "unused"}))
+    assert result.error.startswith("Parameter error: AttributeError:")
+    response = asyncio.run(_get_parameters_tool({"code": "unused"}))
     assert response.isError is True
     assert response.content[0].text == result.error
+
+
+def test_inspection_omits_incomplete_topology(monkeypatch):
+    import cadquery_core as core
+
+    shape = core.cq.Workplane("XY").box(1, 1, 1).val()
+
+    def fail_faces():
+        raise RuntimeError("topology unavailable")
+
+    monkeypatch.setattr(shape, "Faces", fail_faces)
+    monkeypatch.setattr(core, "_execute_code", lambda code: (shape, None))
+    result = core.handle_inspect("unused")
+    assert result.error is None
+    assert "Bounding Box:" in result.text
+    assert "Volume:" in result.text
+    assert "Topology:" not in result.text
+    assert "Solids:" not in result.text

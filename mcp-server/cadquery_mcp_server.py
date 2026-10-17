@@ -140,6 +140,7 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["code"],
+                "additionalProperties": False,
             },
         ),
         Tool(
@@ -157,6 +158,7 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["code"],
+                "additionalProperties": False,
             },
         ),
         Tool(
@@ -175,7 +177,7 @@ async def list_tools() -> list[Tool]:
                     },
                     "filename": {
                         "type": "string",
-                        "description": "Output filename (format determined by extension)",
+                        "description": "Output filename; ~ expands to the server user's home, relative paths use the server working directory. Returns the absolute path.",
                     },
                     "format": {
                         "type": "string",
@@ -184,6 +186,7 @@ async def list_tools() -> list[Tool]:
                     },
                 },
                 "required": ["code", "filename"],
+                "additionalProperties": False,
             },
         ),
     ]
@@ -195,21 +198,20 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> ToolResponse:
 
     try:
         if name == "render":
-            return await _handle_render(arguments)
+            return await _render_tool(arguments)
         elif name == "inspect":
-            return await _handle_inspect(arguments)
+            return await _inspect_tool(arguments)
         elif name == "get_parameters":
-            return await _handle_get_parameters(arguments)
+            return await _get_parameters_tool(arguments)
         elif name == "export":
-            return await _handle_export(arguments)
+            return await _export_tool(arguments)
         return _error_response(f"Unknown tool: {name}")
     except Exception as e:
         return _error_response(f"Error: {type(e).__name__}: {e}")
 
 
-async def _handle_render(arguments: dict[str, Any]) -> ToolResponse:
+async def _render_tool(arguments: dict[str, Any]) -> ToolResponse:
     """Execute CadQuery code and return rendered PNG or SVG images."""
-    image_format = arguments.get("image_format", "png")
     result = handle_render(
         arguments["code"],
         view=arguments.get("view", "isometric"),
@@ -217,7 +219,7 @@ async def _handle_render(arguments: dict[str, Any]) -> ToolResponse:
         width=arguments.get("width", 800),
         height=arguments.get("height", 600),
         show_hidden=arguments.get("show_hidden", True),
-        image_format=image_format,
+        image_format=arguments.get("image_format", "png"),
     )
 
     if result.error:
@@ -231,18 +233,15 @@ async def _handle_render(arguments: dict[str, Any]) -> ToolResponse:
                 text=f"Rendered {len(result.view_names)} views: {', '.join(result.view_names)}",
             )
         )
-    payloads = result.png_contents if image_format == "png" else [
-        svg.encode("utf-8") for svg in result.svg_contents
-    ]
-    mime_type = "image/png" if image_format == "png" else "image/svg+xml"
-    for data in payloads:
+    for data in result.images:
         items.append(ImageContent(
-            type="image", data=base64.b64encode(data).decode("ascii"), mimeType=mime_type,
+            type="image", data=base64.b64encode(data).decode("ascii"),
+            mimeType=result.mime_type,
         ))
     return items
 
 
-async def _handle_inspect(arguments: dict[str, Any]) -> ToolResponse:
+async def _inspect_tool(arguments: dict[str, Any]) -> ToolResponse:
     """Execute CadQuery code and return geometry information."""
     result = handle_inspect(arguments["code"])
 
@@ -252,7 +251,7 @@ async def _handle_inspect(arguments: dict[str, Any]) -> ToolResponse:
     return [TextContent(type="text", text=result.text)]
 
 
-async def _handle_get_parameters(arguments: dict[str, Any]) -> ToolResponse:
+async def _get_parameters_tool(arguments: dict[str, Any]) -> ToolResponse:
     """Parse CadQuery code and extract parameters."""
     result = handle_get_parameters(arguments["code"])
 
@@ -262,7 +261,7 @@ async def _handle_get_parameters(arguments: dict[str, Any]) -> ToolResponse:
     return [TextContent(type="text", text=result.text)]
 
 
-async def _handle_export(arguments: dict[str, Any]) -> ToolResponse:
+async def _export_tool(arguments: dict[str, Any]) -> ToolResponse:
     """Execute CadQuery code and export to file."""
     result = handle_export(
         arguments["code"],
