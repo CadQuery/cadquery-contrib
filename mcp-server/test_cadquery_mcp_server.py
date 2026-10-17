@@ -1,5 +1,5 @@
 """
-Tests for the CadQuery MCP server, CLI, and shared core.
+Tests for the CadQuery MCP server and CAD operations.
 
 These tests verify that:
 - The core module executes CadQuery scripts correctly
@@ -10,7 +10,6 @@ These tests verify that:
 - Error handling is correct
 - Multi-view rendering works
 - The MCP server dispatches to core correctly
-- The CLI argument parser and subcommands work
 
 Run with: pytest test_cadquery_mcp_server.py -v
 """
@@ -20,8 +19,7 @@ import asyncio
 import base64
 import tempfile
 import os
-import subprocess
-import sys
+from types import SimpleNamespace
 
 
 # ============================================================================
@@ -29,7 +27,7 @@ import sys
 # ============================================================================
 
 class TestCore:
-    """Test the shared cadquery_core module directly."""
+    """Test CAD operations independently of MCP responses."""
 
     def test_import(self):
         """Test that the core module can be imported."""
@@ -352,6 +350,7 @@ class TestMCPServer:
 
         result = asyncio.run(_handle_render({
             "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(10, 20, 30)",
+            "image_format": "svg",
         }))
 
         assert len(result) == 1
@@ -366,8 +365,9 @@ class TestMCPServer:
         from cadquery_mcp_server import _handle_render
 
         result = asyncio.run(_handle_render({"code": "x = 1"}))
-        assert result[0].type == "text"
-        assert "No shape produced" in result[0].text
+        assert result.isError is True
+        assert result.content[0].type == "text"
+        assert "No shape produced" in result.content[0].text
 
     def test_multi_view_returns_multiple_images(self):
         """Test that multi_view returns text + 4 images."""
@@ -376,6 +376,7 @@ class TestMCPServer:
         result = asyncio.run(_handle_render({
             "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(10, 10, 10)",
             "multi_view": True,
+            "image_format": "svg",
         }))
 
         assert len(result) == 5
@@ -403,6 +404,7 @@ class TestMCPServer:
         # render
         result = asyncio.run(call_tool("render", {
             "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(1, 1, 1)",
+            "image_format": "svg",
         }))
         assert result[0].type == "image"
 
@@ -414,189 +416,81 @@ class TestMCPServer:
 
         # unknown
         result = asyncio.run(call_tool("unknown_tool", {}))
-        assert "Unknown tool" in result[0].text
+        assert result.isError is True
+        assert "Unknown tool" in result.content[0].text
 
 
-# ============================================================================
-# CLI tests
-# ============================================================================
+@pytest.mark.parametrize("image_format", ["svg", "png"])
+@pytest.mark.parametrize("multi_view", [False, True])
+def test_renderer_failure_is_a_cad_error(monkeypatch, image_format, multi_view):
+    import cadquery_core as core
+    from cadquery_mcp_server import _handle_render
 
-class TestCLI:
-    """Test the cadquery-cli argument parser and subcommands."""
+    def render(shape, view, *args):
+        if not multi_view or view == "front":
+            raise RuntimeError("renderer failed")
+        return b"partial PNG" if image_format == "png" else "partial SVG"
 
-    def test_import(self):
-        """Test that the CLI module can be imported."""
-        import cadquery_cli
-        assert cadquery_cli.build_parser is not None
+    monkeypatch.setattr(core, f"render_{image_format}", render)
+    arguments = {
+        "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(1, 1, 1)",
+        "image_format": image_format,
+        "multi_view": multi_view,
+    }
+    result = core.handle_render(**arguments)
+    assert result.error == "Render error: RuntimeError: renderer failed"
+    assert result.svg_contents == []
+    assert result.png_contents == []
+    assert result.view_names == []
 
-    def test_parser_render(self):
-        """Test render subcommand argument parsing."""
-        from cadquery_cli import build_parser
-        parser = build_parser()
+    # Call the adapter directly: the dispatcher must not be needed to catch this.
+    response = asyncio.run(_handle_render(arguments))
+    assert response.isError is True
+    assert response.content[0].text == result.error
 
-        args = parser.parse_args(["render", "test.py", "-o", "out.svg"])
-        assert args.command == "render"
-        assert args.file == "test.py"
-        assert args.output == "out.svg"
-        assert args.view == "isometric"
-        assert args.multi_view is False
 
-    def test_parser_render_options(self):
-        """Test render with all options."""
-        from cadquery_cli import build_parser
-        parser = build_parser()
+@pytest.mark.parametrize("name", ["render", "inspect", "get_parameters", "export"])
+def test_parser_failure_stays_in_cad_layer(monkeypatch, tmp_path, name):
+    import cadquery_core as core
+    import cadquery_mcp_server as server
 
-        args = parser.parse_args([
-            "render", "test.py",
-            "--view", "front",
-            "--multi-view",
-            "--width", "1200",
-            "--height", "900",
-            "--no-hidden",
-            "-o", "out.svg",
-        ])
-        assert args.view == "front"
-        assert args.multi_view is True
-        assert args.width == 1200
-        assert args.height == 900
-        assert args.no_hidden is True
+    def parse(code):
+        raise RuntimeError("parser failed")
 
-    def test_parser_render_inline_code(self):
-        """Test render with inline code."""
-        from cadquery_cli import build_parser
-        parser = build_parser()
+    monkeypatch.setattr(core.cqgi, "parse", parse)
+    arguments = {"code": "unused"}
+    if name == "export":
+        arguments["filename"] = str(tmp_path / "unused.step")
+    result = getattr(core, f"handle_{name}")(**arguments)
+    assert "RuntimeError: parser failed" in result.error
+    response = asyncio.run(getattr(server, f"_handle_{name}")(arguments))
+    assert response.isError is True
+    assert response.content[0].text == result.error
+    assert list(tmp_path.iterdir()) == []
 
-        args = parser.parse_args(["render", "-c", "result = cq.Workplane('XY').box(1,2,3)"])
-        assert args.code == "result = cq.Workplane('XY').box(1,2,3)"
-        assert args.file is None
 
-    def test_parser_inspect(self):
-        """Test inspect subcommand parsing."""
-        from cadquery_cli import build_parser
-        parser = build_parser()
+def test_inspection_formatting_failure_stays_in_cad_layer(monkeypatch):
+    import cadquery_core as core
+    from cadquery_mcp_server import _handle_inspect
 
-        args = parser.parse_args(["inspect", "test.py"])
-        assert args.command == "inspect"
-        assert args.file == "test.py"
+    # BoundingBox succeeds, but its result cannot be formatted.
+    shape = SimpleNamespace(BoundingBox=lambda: object())
+    monkeypatch.setattr(core, "_execute_code", lambda code: (shape, None))
+    result = core.handle_inspect("unused")
+    assert result.error.startswith("Inspect error: AttributeError:")
+    response = asyncio.run(_handle_inspect({"code": "unused"}))
+    assert response.isError is True
+    assert response.content[0].text == result.error
 
-    def test_parser_params(self):
-        """Test params subcommand parsing."""
-        from cadquery_cli import build_parser
-        parser = build_parser()
 
-        args = parser.parse_args(["params", "test.py"])
-        assert args.command == "params"
+def test_parameter_formatting_failure_stays_in_cad_layer(monkeypatch):
+    import cadquery_core as core
+    from cadquery_mcp_server import _handle_get_parameters
 
-    def test_parser_export(self):
-        """Test export subcommand parsing."""
-        from cadquery_cli import build_parser
-        parser = build_parser()
-
-        args = parser.parse_args(["export", "test.py", "-o", "model.step"])
-        assert args.command == "export"
-        assert args.output == "model.step"
-        assert args.format is None
-
-    def test_parser_export_format(self):
-        """Test export with explicit format."""
-        from cadquery_cli import build_parser
-        parser = build_parser()
-
-        args = parser.parse_args(["export", "test.py", "-o", "model.out", "--format", "STL"])
-        assert args.format == "STL"
-
-    def test_cli_render_file(self):
-        """Integration test: render a script file via CLI."""
-        from cadquery_cli import cmd_render, build_parser
-
-        # Write a temp script
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write("import cadquery as cq\nresult = cq.Workplane('XY').box(10, 10, 10)\n")
-            script = f.name
-
-        with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as f:
-            outfile = f.name
-
-        try:
-            parser = build_parser()
-            args = parser.parse_args(["render", script, "-o", outfile])
-            args.func(args)
-
-            assert os.path.exists(outfile)
-            with open(outfile) as f:
-                content = f.read()
-            assert "<svg" in content
-        finally:
-            for p in (script, outfile):
-                if os.path.exists(p):
-                    os.unlink(p)
-
-    def test_cli_inspect_file(self):
-        """Integration test: inspect a script file via CLI."""
-        from cadquery_cli import cmd_inspect, build_parser
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write("import cadquery as cq\nresult = cq.Workplane('XY').box(10, 20, 30)\n")
-            script = f.name
-
-        try:
-            parser = build_parser()
-            args = parser.parse_args(["inspect", script])
-            # Just verify it doesn't crash (output goes to stdout)
-            args.func(args)
-        finally:
-            if os.path.exists(script):
-                os.unlink(script)
-
-    def test_cli_export_file(self):
-        """Integration test: export a script to STEP via CLI."""
-        from cadquery_cli import cmd_export, build_parser
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write("import cadquery as cq\nresult = cq.Workplane('XY').box(5, 5, 5)\n")
-            script = f.name
-
-        with tempfile.NamedTemporaryFile(suffix=".step", delete=False) as f:
-            outfile = f.name
-
-        try:
-            parser = build_parser()
-            args = parser.parse_args(["export", script, "-o", outfile])
-            args.func(args)
-
-            assert os.path.exists(outfile)
-            assert os.path.getsize(outfile) > 0
-        finally:
-            for p in (script, outfile):
-                if os.path.exists(p):
-                    os.unlink(p)
-
-    def test_cli_render_multi_view(self):
-        """Integration test: multi-view render creates separate files."""
-        from cadquery_cli import cmd_render, build_parser
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write("import cadquery as cq\nresult = cq.Workplane('XY').box(10, 10, 10)\n")
-            script = f.name
-
-        outbase = tempfile.mktemp(suffix=".svg")
-
-        try:
-            parser = build_parser()
-            args = parser.parse_args(["render", script, "--multi-view", "-o", outbase])
-            args.func(args)
-
-            base = outbase[:-4]  # strip .svg
-            expected_files = [f"{base}_{v}.svg" for v in ["isometric", "front", "top", "right"]]
-            for ef in expected_files:
-                assert os.path.exists(ef), f"Missing: {ef}"
-                with open(ef) as f:
-                    assert "<svg" in f.read()
-        finally:
-            if os.path.exists(script):
-                os.unlink(script)
-            base = outbase[:-4]
-            for v in ["isometric", "front", "top", "right"]:
-                p = f"{base}_{v}.svg"
-                if os.path.exists(p):
-                    os.unlink(p)
+    model = SimpleNamespace(metadata=SimpleNamespace(parameters={"broken": object()}))
+    monkeypatch.setattr(core.cqgi, "parse", lambda code: model)
+    result = core.handle_get_parameters("unused")
+    assert result.error.startswith("Error: AttributeError:")
+    response = asyncio.run(_handle_get_parameters({"code": "unused"}))
+    assert response.isError is True
+    assert response.content[0].text == result.error

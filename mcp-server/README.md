@@ -1,21 +1,20 @@
-# CadQuery MCP Server & CLI
+# CadQuery MCP Server
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server **and** a standalone command-line tool that enable AI assistants (like Claude) and shell-based workflows to execute CadQuery scripts and render 3D CAD models.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that
+lets AI assistants execute CadQuery scripts and render, inspect, and export 3D
+CAD models. Run it with the `cadquery-mcp` entry point.
 
-The package installs two entry points:
-
-- `cadquery-mcp` — MCP server for AI assistants
-- `cadquery-cli` — CLI for direct use from a terminal or shell scripts
-
-Both share the same underlying engine (`cadquery_core`) so behavior is identical.
+For command-line workflows, use the existing
+[cq-cli](https://github.com/CadQuery/cq-cli) project.
 
 ## Features
 
-- **render** - Execute CadQuery code and produce SVG images of the 3D model
+- **render** - Execute CadQuery code and produce shaded PNGs or SVG line drawings
+  - Offscreen PNG rendering preserves assembly colors and part locations
   - Multiple camera angles: isometric, isometric_back, front, back, top, bottom, left, right
   - Multi-view mode (isometric, front, top, right) for complex models
   - Configurable image dimensions
-  - Hidden line rendering
+  - Hidden line rendering for SVG
 
 - **inspect** - Get geometry information about a shape
   - Bounding box dimensions
@@ -23,23 +22,29 @@ Both share the same underlying engine (`cadquery_core`) so behavior is identical
   - Center of mass
   - Topology counts (solids, faces, edges, vertices)
 
-- **get_parameters** / `params` - Extract customizable parameters from CadQuery scripts
+- **get_parameters** - Extract customizable parameters from CadQuery scripts
 
 - **export** - Export models to various formats
   - STEP, STL, SVG, DXF, AMF, 3MF, VRML, BREP
+  - Assembly STEP exports retain names, colors, and locations
+
+Shapes, Workplanes with multiple objects, nested assemblies, and multiple
+`show_object()` outputs are supported. Failed MCP tool calls set `isError: true`.
 
 ## Installation
 
 ### Prerequisites
 
-CadQuery must be installed first. The recommended method is via conda or mamba:
+Use a dedicated environment with CadQuery 2.8 or later and MCP Python SDK 1.30 or
+later (both below their next major version). For example:
 
 ```bash
 # conda
-conda install -c conda-forge cadquery
+conda create -n cadquery -c conda-forge cadquery=2.8.0 pip
+conda activate cadquery
 
 # mamba (drop-in replacement for conda; default in miniforge)
-mamba install -c conda-forge cadquery
+mamba create -n cadquery -c conda-forge cadquery=2.8.0 pip
 ```
 
 ### Install from Source
@@ -47,37 +52,61 @@ mamba install -c conda-forge cadquery
 ```bash
 git clone https://github.com/CadQuery/cadquery-contrib.git
 cd cadquery-contrib/mcp-server
-pip install .
+python -m pip install .
 ```
 
 For development (editable install):
 
 ```bash
-pip install -e .
+python -m pip install -e .
 ```
 
 ### Run Tests
 
 ```bash
-pip install pytest
-pytest test_cadquery_mcp_server.py -v
+python -m pip install pytest
+python -m pytest test_cadquery_mcp_server.py test_mcp_assemblies.py -v
 ```
 
 ## MCP Server Configuration
 
 ### Claude Code
 
-Add to your `~/.claude/settings.json`:
+Register the server from your CAD project's root, using absolute paths to the
+Python interpreter with CadQuery/MCP installed and to this checkout's server:
+
+```bash
+claude mcp add --transport stdio --scope project cadquery -- \
+  /absolute/path/to/environment/bin/python -u \
+  /absolute/path/to/cadquery-contrib/mcp-server/cadquery_mcp_server.py
+```
+
+This writes a project-root `.mcp.json` (not `~/.claude/settings.json`):
 
 ```json
 {
     "mcpServers": {
         "cadquery": {
-            "command": "cadquery-mcp"
+            "type": "stdio",
+            "command": "/absolute/path/to/environment/bin/python",
+            "args": ["-u", "/absolute/path/to/cadquery-contrib/mcp-server/cadquery_mcp_server.py"]
         }
     }
 }
 ```
+
+Start or restart Claude Code in that project, approve the project server when
+prompted, and check `/mcp`. `claude mcp get cadquery` shows the selected launcher,
+scope, and status. A pending-approval status requires that interactive approval.
+Use `--scope user` instead of `--scope project` for all projects. Local entries
+take precedence over project entries, which take precedence over user entries;
+remove stale registrations that shadow the intended checkout.
+
+On WSL, run Claude Code and this Linux launcher inside WSL. A Windows-native
+Claude Desktop process needs a Windows launcher or a `wsl.exe` wrapper instead.
+If the Linux font cache is unwritable, add an `env` entry such as
+`"XDG_CACHE_HOME": "/tmp/cadquery-cache"` to the server configuration.
+See [Claude Code's MCP documentation](https://code.claude.com/docs/en/mcp).
 
 ### Claude Desktop
 
@@ -105,39 +134,6 @@ Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/
 }
 ```
 
-## CLI Usage
-
-The `cadquery-cli` command exposes the same functionality as the MCP server, for use in terminals, scripts, or CI.
-
-```bash
-# Render a script to an SVG (isometric by default)
-cadquery-cli render script.py -o output.svg
-
-# Render multiple views (isometric, front, top, right) into separate files
-cadquery-cli render script.py --multi-view -o views.svg
-
-# Specific view + custom dimensions
-cadquery-cli render script.py --view front --width 1200 --height 900
-
-# Inspect geometry (bounding box, volume, surface area, etc.)
-cadquery-cli inspect script.py
-
-# Extract parameters defined in the script
-cadquery-cli params script.py
-
-# Export to STEP / STL / etc. (format inferred from filename)
-cadquery-cli export script.py -o model.step
-cadquery-cli export script.py -o model.stl
-
-# Inline code instead of a script file
-cadquery-cli render -c "import cadquery as cq; result = cq.Workplane('XY').box(1,2,3)" -o box.svg
-
-# Read a script from stdin
-cat script.py | cadquery-cli render - -o output.svg
-```
-
-Run `cadquery-cli --help` (or `cadquery-cli <subcommand> --help`) for the full flag list.
-
 ## MCP Usage Examples
 
 Once configured, you can ask Claude to create 3D models:
@@ -158,7 +154,8 @@ result = (
 )
 ```
 
-And return a rendered SVG image of the model.
+And return a rendered PNG image of the model. Set `image_format` to `svg` to
+request an SVG line drawing instead. SVG preserves geometry but not part colors.
 
 ### Multi-View Rendering
 
@@ -181,7 +178,7 @@ import cadquery as cq
 result = cq.Workplane('XY').box(width, height, depth)
 ```
 
-Use the `get_parameters` tool (MCP) or `cadquery-cli params` (CLI) to extract these for modification.
+Use the `get_parameters` tool to extract these for modification.
 
 ### Exporting Models
 
@@ -198,11 +195,17 @@ Execute CadQuery code and return rendered image(s).
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | code | string | required | CadQuery Python code to execute |
+| image_format | string | "png" | Shaded PNG with colors, or SVG line drawing |
 | view | string | "isometric" | Camera angle (isometric, isometric_back, front, back, top, bottom, left, right) |
 | multi_view | boolean | false | Return multiple views |
 | width | integer | 800 | Image width in pixels |
 | height | integer | 600 | Image height in pixels |
-| show_hidden | boolean | true | Show hidden lines |
+| show_hidden | boolean | true | Show hidden lines in SVG; unused for PNG |
+
+Image width and height must be integers from 16 through 4096. PNG rendering uses
+VTK's offscreen OpenGL backend; a working graphics backend is required. Explicit
+SVG rendering does not require a display. PNG failures are returned as errors,
+rather than silently falling back to SVG.
 
 ### inspect
 
@@ -230,7 +233,7 @@ Export the model to a file.
 | filename | string | required | Output filename |
 | format | string | auto | Export format (STEP, STL, SVG, DXF, AMF, 3MF, VRML, BREP) |
 
-## Writing CadQuery Scripts for MCP / CLI
+## Writing CadQuery Scripts for MCP
 
 Scripts should either:
 
@@ -244,6 +247,18 @@ Scripts should either:
    box = cq.Workplane('XY').box(1, 2, 3)
    show_object(box)
    ```
+
+Assemblies may be assigned to `result` or passed to `show_object()`. Multiple
+displayed objects are collected into an assembly, including display colors:
+
+```python
+import cadquery as cq
+result = cq.Assembly(name="example")
+result.add(cq.Workplane("XY").box(10, 10, 10), name="red_block",
+           color=cq.Color("red"))
+result.add(cq.Workplane("XY").box(5, 5, 5), name="blue_block",
+           loc=cq.Location((20, 0, 0)), color=cq.Color("blue"))
+```
 
 ## License
 

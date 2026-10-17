@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cadquery-mcp"
 version = "0.2.0"
-description = "MCP server and CLI for CadQuery - enables AI assistants and command-line workflows to create 3D CAD models"
+description = "MCP server for CadQuery - enables AI assistants to create and inspect 3D CAD models"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
@@ -14,7 +14,7 @@ authors = [
 maintainers = [
     {name = "Albert Wang", email = "amwang217@gmail.com"},
 ]
-keywords = ["cadquery", "cad", "mcp", "ai", "claude", "3d-modeling", "cli"]
+keywords = ["cadquery", "cad", "mcp", "ai", "claude", "3d-modeling"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -30,12 +30,9 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "cadquery>=2.4.0",
-    "mcp>=1.0.0",
+    "cadquery>=2.8.0,<3",
+    "mcp>=1.30.0,<2",
 ]
-
-[project.optional-dependencies]
-cli = []  # CLI has no extra deps beyond the core
 
 [project.urls]
 Homepage = "https://github.com/CadQuery/cadquery-contrib"
@@ -44,7 +41,6 @@ Documentation = "https://github.com/CadQuery/cadquery-contrib/tree/master/mcp-se
 
 [project.scripts]
 cadquery-mcp = "cadquery_mcp_server:run"
-cadquery-cli = "cadquery_cli:run"
 
 [tool.setuptools]
-py-modules = ["cadquery_core", "cadquery_mcp_server", "cadquery_cli"]
+py-modules = ["cadquery_core", "cadquery_mcp_server"]

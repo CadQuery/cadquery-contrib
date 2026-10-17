@@ -15,13 +15,15 @@
 """
 Core CadQuery execution and rendering logic.
 
-Shared by both the MCP server (cadquery_mcp_server.py) and CLI (cadquery_cli.py).
-This module handles script execution via CQGI, SVG rendering, geometry inspection,
+CAD operations for the MCP server, independent of MCP response types.
+This module handles script execution via CQGI, SVG/PNG rendering, geometry inspection,
 parameter extraction, and file export.
 """
 
+import tempfile
 import traceback
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import cadquery as cq
@@ -55,6 +57,7 @@ class RenderResult:
     svg_contents: list[str] = field(default_factory=list)
     view_names: list[str] = field(default_factory=list)
     error: Optional[str] = None
+    png_contents: list[bytes] = field(default_factory=list)
 
 
 @dataclass
@@ -83,53 +86,57 @@ class ExportResult:
 # ---------------------------------------------------------------------------
 
 def _extract_shape(build_result, env):
-    """Extract the shape from a build result or environment."""
-    # First try to get from show_object() calls
-    if build_result.first_result is not None:
-        return build_result.first_result.shape
-
-    # Fall back to 'result' variable in environment
-    if "result" in env:
-        return env["result"]
-
-    return None
+    """Preserve all show_object outputs and their display colors."""
+    displayed = build_result.results
+    if len(displayed) == 1 and not displayed[0].options:
+        return displayed[0].shape
+    if displayed:
+        assembly = cq.Assembly(name="displayed")
+        for index, item in enumerate(displayed):
+            opts = item.options or {}
+            color = opts.get("color")
+            if color is not None and not isinstance(color, cq.Color):
+                color = cq.Color(color) if isinstance(color, str) else cq.Color(*color)
+            if "alpha" in opts:
+                rgb = color.toTuple()[:3] if color is not None else (0.8, 0.8, 0.8)
+                color = cq.Color(*rgb, opts["alpha"])
+            assembly.add(item.shape, name=f"object_{index}", color=color)
+        return assembly
+    return env.get("result")
 
 
 def _to_occ_shape(shape):
-    """Unwrap a Workplane to its underlying OCC shape if needed."""
-    if hasattr(shape, "val"):
-        return shape.val()
+    """Flatten geometry only when needed, retaining every part and location."""
+    if isinstance(shape, cq.Assembly):
+        return shape.toCompound()
+    if isinstance(shape, cq.Workplane):
+        return cq.Compound.makeCompound(
+            item for item in shape.vals() if isinstance(item, cq.Shape)
+        )
     return shape
 
 
 def _execute_code(code: str):
-    """Parse and execute CadQuery code via CQGI.
-
-    Returns (shape, error_string).  shape is the unwrapped OCC shape or None.
-    """
+    """Execute CQGI code, retaining assembly metadata and reporting CAD errors."""
     try:
         model = cqgi.parse(code)
+        result = model.build()
+        if result.exception:
+            tb = traceback.format_exception(
+                type(result.exception),
+                result.exception,
+                result.exception.__traceback__,
+            )
+            return None, f"Execution error:\n{''.join(tb)}"
+
+        shape = _extract_shape(result, result.env)
+        if shape is None:
+            return None, "No shape produced. Use show_object(shape) or assign to 'result' variable."
+        return shape, None
     except SyntaxError as e:
         return None, f"Syntax error: {e}"
-
-    try:
-        result = model.build()
     except Exception as e:
-        return None, f"Error: {type(e).__name__}: {e}"
-
-    if result.exception:
-        tb = traceback.format_exception(
-            type(result.exception),
-            result.exception,
-            result.exception.__traceback__,
-        )
-        return None, f"Execution error:\n{''.join(tb)}"
-
-    shape = _extract_shape(result, result.env)
-    if shape is None:
-        return None, "No shape produced. Use show_object(shape) or assign to 'result' variable."
-
-    return _to_occ_shape(shape), None
+        return None, f"Execution error: {type(e).__name__}: {e}"
 
 
 def render_svg(shape, view_name: str, width: int, height: int,
@@ -145,109 +152,175 @@ def render_svg(shape, view_name: str, width: int, height: int,
         "showHidden": show_hidden,
     }
 
-    return getSVG(shape, opts=opts)
+    return getSVG(_to_occ_shape(shape), opts=opts)
+
+
+def render_png(shape, view_name: str, width: int, height: int) -> bytes:
+    """Render a shaded PNG offscreen, preserving assembly colors and locations."""
+    from cadquery.occ_impl.assembly import toVTKAssy
+    from vtkmodules.vtkRenderingCore import (
+        vtkRenderer, vtkRenderWindow, vtkWindowToImageFilter,
+    )
+    from vtkmodules.vtkIOImage import vtkPNGWriter
+    import vtkmodules.vtkRenderingOpenGL2  # register the rendering backend
+
+    assembly = shape if isinstance(shape, cq.Assembly) else cq.Assembly(
+        shape, color=cq.Color(0.7, 0.75, 0.8)
+    )
+    renderer = vtkRenderer()
+    renderer.SetBackground(0.95, 0.96, 0.98)
+    for actor in toVTKAssy(assembly, edges=False, tolerance=0.1):
+        renderer.AddActor(actor)
+    window = vtkRenderWindow()
+    try:
+        window.SetOffScreenRendering(1)
+        window.SetSize(width, height)
+        window.SetMultiSamples(0)
+        window.AddRenderer(renderer)
+        camera = renderer.GetActiveCamera()
+        camera.SetPosition(*VIEWS[view_name])
+        camera.SetFocalPoint(0, 0, 0)
+        camera.SetViewUp(*((0, 1, 0) if view_name in ("top", "bottom") else (0, 0, 1)))
+        camera.ParallelProjectionOn()
+        renderer.ResetCamera()
+        renderer.ResetCameraClippingRange()
+        window.Render()
+        capture = vtkWindowToImageFilter()
+        capture.SetInput(window)
+        capture.ReadFrontBufferOff()
+        capture.Update()
+        writer = vtkPNGWriter()
+        writer.SetWriteToMemory(True)
+        writer.SetInputConnection(capture.GetOutputPort())
+        writer.Write()
+        return bytes(memoryview(writer.GetResult()))
+    finally:
+        window.Finalize()
 
 
 # ---------------------------------------------------------------------------
-# Public API — used by both MCP server and CLI
+# CAD operations — return failures before MCP response handling
 # ---------------------------------------------------------------------------
 
 def handle_render(code: str, *, view: str = "isometric",
                   multi_view: bool = False, width: int = 800,
-                  height: int = 600, show_hidden: bool = True) -> RenderResult:
-    """Execute CadQuery code and return rendered SVG(s)."""
-    shape, err = _execute_code(code)
-    if err:
-        return RenderResult(error=err)
+                  height: int = 600, show_hidden: bool = True,
+                  image_format: str = "svg") -> RenderResult:
+    """Execute CadQuery code and return SVGs or colored PNGs."""
+    try:
+        if image_format not in ("svg", "png"):
+            return RenderResult(error="Render error: image_format must be 'svg' or 'png'.")
+        if view not in VIEWS:
+            return RenderResult(error=f"Render error: unknown view '{view}'.")
+        if not all(type(size) is int and 16 <= size <= 4096 for size in (width, height)):
+            return RenderResult(error="Render error: width and height must be integers from 16 to 4096.")
+        shape, err = _execute_code(code)
+        if err:
+            return RenderResult(error=err)
 
-    if multi_view:
-        svgs = []
-        for vn in MULTI_VIEW_ANGLES:
-            svgs.append(render_svg(shape, vn, width, height, show_hidden))
-        return RenderResult(svg_contents=svgs, view_names=list(MULTI_VIEW_ANGLES))
-    else:
-        svg = render_svg(shape, view, width, height, show_hidden)
-        return RenderResult(svg_contents=[svg], view_names=[view])
+        names = list(MULTI_VIEW_ANGLES) if multi_view else [view]
+        if image_format == "png":
+            pngs = [render_png(shape, name, width, height) for name in names]
+            return RenderResult(png_contents=pngs, view_names=names)
+        svgs = [render_svg(shape, name, width, height, show_hidden) for name in names]
+        return RenderResult(svg_contents=svgs, view_names=names)
+    except Exception as e:
+        return RenderResult(error=f"Render error: {type(e).__name__}: {e}")
 
 
 def handle_inspect(code: str) -> InspectResult:
     """Execute CadQuery code and return geometry information."""
-    shape, err = _execute_code(code)
-    if err:
-        return InspectResult(error=err)
-
-    bb = shape.BoundingBox()
-    lines = [
-        "Geometry Information:",
-        f"  Bounding Box:",
-        f"    X: {bb.xmin:.4f} to {bb.xmax:.4f} (size: {bb.xlen:.4f})",
-        f"    Y: {bb.ymin:.4f} to {bb.ymax:.4f} (size: {bb.ylen:.4f})",
-        f"    Z: {bb.zmin:.4f} to {bb.zmax:.4f} (size: {bb.zlen:.4f})",
-    ]
-
     try:
-        lines.append(f"  Volume: {shape.Volume():.4f}")
-    except Exception:
-        pass
+        shape, err = _execute_code(code)
+        if err:
+            return InspectResult(error=err)
 
-    try:
-        lines.append(f"  Surface Area: {shape.Area():.4f}")
-    except Exception:
-        pass
+        shape = _to_occ_shape(shape)
+        bb = shape.BoundingBox()
+        lines = [
+            "Geometry Information:",
+            f"  Bounding Box:",
+            f"    X: {bb.xmin:.4f} to {bb.xmax:.4f} (size: {bb.xlen:.4f})",
+            f"    Y: {bb.ymin:.4f} to {bb.ymax:.4f} (size: {bb.ylen:.4f})",
+            f"    Z: {bb.zmin:.4f} to {bb.zmax:.4f} (size: {bb.zlen:.4f})",
+        ]
 
-    try:
-        com = shape.Center()
-        lines.append(f"  Center of Mass: ({com.x:.4f}, {com.y:.4f}, {com.z:.4f})")
-    except Exception:
-        pass
+        try:
+            lines.append(f"  Volume: {shape.Volume():.4f}")
+        except Exception:
+            pass
 
-    try:
-        lines.append("  Topology:")
-        lines.append(f"    Solids: {len(shape.Solids())}")
-        lines.append(f"    Faces: {len(shape.Faces())}")
-        lines.append(f"    Edges: {len(shape.Edges())}")
-        lines.append(f"    Vertices: {len(shape.Vertices())}")
-    except Exception:
-        pass
+        try:
+            lines.append(f"  Surface Area: {shape.Area():.4f}")
+        except Exception:
+            pass
 
-    return InspectResult(text="\n".join(lines))
+        try:
+            com = shape.Center()
+            lines.append(f"  Center of Mass: ({com.x:.4f}, {com.y:.4f}, {com.z:.4f})")
+        except Exception:
+            pass
+
+        try:
+            lines.append("  Topology:")
+            lines.append(f"    Solids: {len(shape.Solids())}")
+            lines.append(f"    Faces: {len(shape.Faces())}")
+            lines.append(f"    Edges: {len(shape.Edges())}")
+            lines.append(f"    Vertices: {len(shape.Vertices())}")
+        except Exception:
+            pass
+
+        return InspectResult(text="\n".join(lines))
+    except Exception as e:
+        return InspectResult(error=f"Inspect error: {type(e).__name__}: {e}")
 
 
 def handle_get_parameters(code: str) -> ParamsResult:
     """Parse CadQuery code and extract parameters."""
     try:
         model = cqgi.parse(code)
+        params = model.metadata.parameters
+        if not params:
+            return ParamsResult(text="No parameters found in the script.")
+
+        lines = ["Parameters found:"]
+        for name, param in params.items():
+            type_name = param.varType.__name__ if param.varType else "unknown"
+            lines.append(f"  {name}: {type_name} = {param.default_value}")
+            if param.desc:
+                lines.append(f"    Description: {param.desc}")
+            if param.valid_values:
+                lines.append(f"    Valid values: {param.valid_values}")
+
+        return ParamsResult(text="\n".join(lines))
     except SyntaxError as e:
         return ParamsResult(error=f"Syntax error: {e}")
     except Exception as e:
         return ParamsResult(error=f"Error: {type(e).__name__}: {e}")
 
-    params = model.metadata.parameters
-    if not params:
-        return ParamsResult(text="No parameters found in the script.")
-
-    lines = ["Parameters found:"]
-    for name, param in params.items():
-        type_name = param.varType.__name__ if param.varType else "unknown"
-        lines.append(f"  {name}: {type_name} = {param.default_value}")
-        if param.desc:
-            lines.append(f"    Description: {param.desc}")
-        if param.valid_values:
-            lines.append(f"    Valid values: {param.valid_values}")
-
-    return ParamsResult(text="\n".join(lines))
-
 
 def handle_export(code: str, filename: str,
                   export_format: str | None = None) -> ExportResult:
-    """Execute CadQuery code and export the result to a file."""
-    shape, err = _execute_code(code)
-    if err:
-        return ExportResult(error=err)
-
+    """Export a model, replacing an existing file only after a successful write."""
     try:
-        export(shape, filename, exportType=export_format)
+        shape, err = _execute_code(code)
+        if err:
+            return ExportResult(error=err)
+
+        destination = Path(filename)
+        fmt = (export_format or destination.suffix.lstrip(".")).upper()
+        fmt = {"STP": "STEP"}.get(fmt, fmt)
+        with tempfile.TemporaryDirectory(
+            prefix=f".{destination.name}.", dir=destination.parent,
+        ) as directory:
+            temporary = Path(directory) / f"model.{fmt.lower()}"
+            if isinstance(shape, cq.Assembly) and fmt == "STEP":
+                shape.export(str(temporary), exportType=fmt)
+            else:
+                export(_to_occ_shape(shape), str(temporary), exportType=fmt)
+            if not temporary.is_file() or temporary.stat().st_size == 0:
+                raise RuntimeError("Exporter did not write a non-empty file.")
+            temporary.replace(destination)
+        return ExportResult(filename=filename)
     except Exception as e:
         return ExportResult(error=f"Export error: {type(e).__name__}: {e}")
-
-    return ExportResult(filename=filename)
