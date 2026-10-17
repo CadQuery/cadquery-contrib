@@ -11,6 +11,7 @@ For command-line workflows, use the existing
 
 - **render** - Execute CadQuery code and produce shaded PNGs or SVG line drawings
   - Offscreen PNG rendering preserves assembly colors and part locations
+  - Wires and edges render as lines alongside shaded parts
   - Multiple camera angles: isometric, isometric_back, front, back, top, bottom, left, right
   - Multi-view mode (isometric, front, top, right) for complex models
   - Configurable image dimensions
@@ -30,23 +31,33 @@ For command-line workflows, use the existing
 
 Shapes, Workplanes with multiple objects, nested assemblies, and multiple
 `show_object()` outputs are supported. Failed MCP tool calls set `isError: true`.
-All tool schemas reject unrecognized arguments.
+All tool schemas reject unrecognized arguments. Empty models return CAD errors.
+Python script output from `print()` is sent to the server's stderr.
 
 ## Installation
 
 ### Prerequisites
 
 Use a dedicated environment with CadQuery 2.8 or later and MCP Python SDK 1.30 or
-later (both below their next major version). For example:
+later (both below their next major version). Create and activate the environment
+with conda:
 
 ```bash
-# conda
 conda create -n cadquery -c conda-forge cadquery=2.8.0 pip
 conda activate cadquery
-
-# mamba (drop-in replacement for conda; default in miniforge)
-mamba create -n cadquery -c conda-forge cadquery=2.8.0 pip
 ```
+
+Or create it with mamba, then activate it in your conda-enabled shell:
+
+```bash
+mamba create -n cadquery -c conda-forge cadquery=2.8.0 pip
+conda activate cadquery
+```
+
+PNG rendering requires a working VTK/OpenGL graphics backend, even when rendering
+offscreen. If PNG rendering fails in your environment, request
+`image_format: "svg"` for a line drawing that does not require a display.
+The server reports PNG failures as errors and does not automatically switch formats.
 
 ### Install from Source
 
@@ -155,8 +166,24 @@ result = (
 )
 ```
 
-And return a rendered PNG image of the model. Set `image_format` to `svg` to
-request an SVG line drawing instead. SVG preserves geometry but not part colors.
+The `render` tool returns a PNG image to the MCP client. Image display and
+saving depend on the client. To request an SVG line drawing, set `image_format`
+to `svg`; SVG shows geometry outlines without part colors.
+
+For example, pass these arguments to the `render` tool:
+
+```json
+{
+    "code": "import cadquery as cq\nresult = cq.Workplane('XY').box(10, 20, 30)",
+    "image_format": "png",
+    "view": "isometric",
+    "width": 800,
+    "height": 600
+}
+```
+
+PNG output is available through `render`. The `export` tool writes CAD files
+and SVG drawings; it does not support PNG.
 
 ### Multi-View Rendering
 
@@ -252,6 +279,10 @@ Scripts should either:
    box = cq.Workplane('XY').box(1, 2, 3)
    show_object(box)
    ```
+
+`show_object(shape, name="mounting_plate")` preserves the supplied name in STEP
+exports. Unnamed outputs use `object_0`, `object_1`, and so on. Duplicate names
+receive numeric suffixes such as `_2`, while preserving other supplied names.
 
 `show_object()` accepts CQ-editor-style display options. `color` accepts RGB or
 RGBA tuples, color names, and `cq.Color` objects. The first RGB component sets

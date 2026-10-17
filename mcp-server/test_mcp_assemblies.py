@@ -223,7 +223,8 @@ def test_stdio_round_trip_all_tools_and_error_flags(tmp_path):
                 assert {tool.name for tool in tools.tools} == {
                     "render", "inspect", "get_parameters", "export",
                 }
-                inspected = await client.call_tool("inspect", {"code": ASSEMBLY_CODE})
+                printed_code = "print('building model', end='', flush=True)\n" + ASSEMBLY_CODE
+                inspected = await client.call_tool("inspect", {"code": printed_code})
                 assert not inspected.isError
                 assert "Solids: 2" in inspected.content[0].text
                 params_result = await client.call_tool("get_parameters", {"code": ASSEMBLY_CODE})
@@ -409,3 +410,134 @@ def test_extensionless_export_requires_explicit_format(tmp_path):
     exported = handle_export(ASSEMBLY_CODE, str(filename), "STEP")
     assert exported.error is None, exported.error
     assert_bounds(cq.importers.importStep(exported.filename).val())
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_script_stdout_goes_to_stderr(capsys, fails):
+    original_stdout = sys.stdout
+    code = "print('building model', end='', flush=True)\n"
+    code += "raise RuntimeError('build failed')" if fails else (
+        "import cadquery as cq\nresult = cq.Workplane('XY').box(1, 1, 1)"
+    )
+    shape, error = _execute_code(code)
+    assert sys.stdout is original_stdout
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "building model"
+    if fails:
+        assert shape is None
+        assert "build failed" in error
+    else:
+        assert error is None
+
+
+@pytest.mark.parametrize("expression", [
+    "cq.Workplane('XY').circle(10)",
+    "cq.Edge.makeLine(cq.Vector(0, 0, 0), cq.Vector(10, 10, 0))",
+])
+def test_png_wire_and_edge_are_visible(expression, tmp_path):
+    import numpy as np
+
+    code = "import cadquery as cq\nresult = " + expression
+    result = handle_render(code, image_format="png", view="top", width=320, height=240)
+    assert result.error is None, result.error
+    pixels = png_pixels(result.images[0], tmp_path).astype(int)
+    foreground = np.any(np.abs(pixels[:, :, :3] - (242, 245, 250)) > 10, axis=2)
+    assert foreground.sum() > 100
+
+
+def test_png_mixed_solid_and_wire_keeps_both_visible(tmp_path):
+    code = DISPLAYED_CODE.replace('.box(10, 10, 10).translate((15, 0, 0))',
+                                  '.circle(8).translate((15, 0, 0))')
+    result = handle_render(code, image_format="png", view="top", width=320, height=240)
+    assert result.error is None, result.error
+    pixels = png_pixels(result.images[0], tmp_path).astype(int).reshape(-1, 3)
+    red = (pixels[:, 0] > 80) & (pixels[:, 0] > pixels[:, 2] * 1.5)
+    blue = (pixels[:, 2] > 80) & (pixels[:, 2] > pixels[:, 0] * 1.5)
+    assert red.sum() > 100
+    assert blue.sum() > 100
+
+
+@pytest.mark.parametrize("script", [
+    "result = cq.Workplane('XY')",
+    "result = cq.Workplane('XY').newObject([])",
+    "result = cq.Assembly()",
+    "result = cq.Compound.makeCompound([])",
+    "from OCP.TopoDS import TopoDS_Shape\n"
+    "result = cq.Workplane('XY').box(1, 1, 1).val()\nresult.wrapped = TopoDS_Shape()",
+])
+def test_empty_geometry_is_a_cad_error_for_all_operations(script, tmp_path):
+    code = "import cadquery as cq\n" + script
+    for image_format in ("png", "svg"):
+        rendered = handle_render(code, image_format=image_format)
+        assert rendered.error == "No geometry produced. The model is empty."
+        assert rendered.images == []
+    assert handle_inspect(code).error == "No geometry produced. The model is empty."
+    destination = tmp_path / "existing.step"
+    destination.write_text("previous model")
+    exported = handle_export(code, str(destination))
+    assert exported.error == "No geometry produced. The model is empty."
+    assert destination.read_text() == "previous model"
+    assert list(tmp_path.iterdir()) == [destination]
+    response = asyncio.run(call_tool("render", {"code": code}))
+    assert response.isError is True
+    assert "model is empty" in response.content[0].text
+
+
+def test_display_options_are_snapshots_and_names_survive_step_export(tmp_path):
+    code = '''
+import cadquery as cq
+box = cq.Workplane("XY").box(1, 1, 1)
+options = {"color": "red"}
+show_object(box, name="mounting_plate", options=options)
+assert options == {"color": "red"}
+options["color"] = "blue"
+show_object(box.translate((3, 0, 0)), name="cover", options=options)
+options["name"] = "changed_after_display"
+options["color"] = "green"
+'''
+    assembly, error = _execute_code(code)
+    assert error is None, error
+    assert [child.name for child in assembly.children] == ["mounting_plate", "cover"]
+    assert assembly.children[0].color.toTuple() == pytest.approx((1, 0, 0, 1))
+    assert assembly.children[1].color.toTuple() == pytest.approx((0, 0, 1, 1))
+    filename = tmp_path / "named.step"
+    result = handle_export(code, str(filename))
+    assert result.error is None, result.error
+    text = filename.read_text()
+    assert "mounting_plate" in text
+    assert "cover" in text
+    assert "changed_after_display" not in text
+    assert len(cq.importers.importStep(str(filename)).val().Solids()) == 2
+
+
+def test_display_names_are_unique_without_stealing_supplied_names():
+    code = '''
+import cadquery as cq
+box = cq.Workplane("XY").box(1, 1, 1)
+for name in ["part", "part", "part_2", "displayed", "object_4"]:
+    show_object(box, name=name)
+'''
+    assembly, error = _execute_code(code)
+    assert error is None, error
+    assert [child.name for child in assembly.children] == [
+        "part", "part_3", "part_2", "displayed_2", "object_4",
+    ]
+
+
+def test_display_keyword_names_do_not_leak_between_calls_or_scripts():
+    code = '''
+import cadquery as cq
+box = cq.Workplane("XY").box(1, 1, 1)
+show_object(box, name="base", color="red")
+show_object(box.translate((3, 0, 0)), name="lid", color="blue")
+'''
+    assembly, error = _execute_code(code)
+    assert error is None, error
+    assert [child.name for child in assembly.children] == ["base", "lid"]
+    assert assembly.children[0].color.toTuple() == pytest.approx((1, 0, 0, 1))
+    assert assembly.children[1].color.toTuple() == pytest.approx((0, 0, 1, 1))
+    plain = "import cadquery as cq\nshow_object(cq.Workplane('XY').box(1, 1, 1))"
+    shape, error = _execute_code(plain)
+    assert error is None, error
+    assert isinstance(shape, cq.Workplane)

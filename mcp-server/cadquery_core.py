@@ -20,8 +20,10 @@ This module handles script execution via CQGI, SVG/PNG rendering, geometry inspe
 parameter extraction, and file export.
 """
 
+import sys
 import tempfile
 import traceback
+from contextlib import redirect_stdout
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -119,9 +121,19 @@ def _extract_shape(build_result):
         return displayed[0].shape
     if displayed:
         assembly = cq.Assembly(name="displayed")
-        for index, item in enumerate(displayed):
-            opts = item.options or {}
-            assembly.add(item.shape, name=f"object_{index}", color=_display_color(opts))
+        names = [
+            str((item.options or {}).get("name") or f"object_{index}")
+            for index, item in enumerate(displayed)
+        ]
+        reserved = set(names)
+        for item, base in zip(displayed, names):
+            name = base
+            if name in assembly.objects:
+                suffix = 2
+                while f"{base}_{suffix}" in reserved or f"{base}_{suffix}" in assembly.objects:
+                    suffix += 1
+                name = f"{base}_{suffix}"
+            assembly.add(item.shape, name=name, color=_display_color(item.options or {}))
         return assembly
     return build_result.env.get("result")
 
@@ -137,27 +149,50 @@ def _to_occ_shape(shape):
     return shape
 
 
+def _build_model(model):
+    """Execute a CQGI model with independent options for each displayed object."""
+    collector = cqgi.ScriptCallback()
+
+    def show_object(shape, options=None, **kwargs):
+        # CQGI's callback otherwise mutates and reuses its default options dict.
+        collector.show_object(shape, options={**(options or {}), **kwargs})
+
+    env = (
+        cqgi.EnvironmentBuilder()
+        .with_real_builtins()
+        .with_cadquery_objects()
+        .add_entry("__name__", "__cqgi__")
+        .add_entry("show_object", show_object)
+        .add_entry("debug", collector.debug)
+        .add_entry("describe_parameter", collector.describe_parameter)
+        .build()
+    )
+    # stdout belongs to the MCP transport; keep Python script output on stderr.
+    with redirect_stdout(sys.stderr):
+        exec(compile(model.ast_tree, cqgi.CQSCRIPT, "exec"), env)
+    result = cqgi.BuildResult()
+    result.set_success_result(collector.outputObjects)
+    result.env = env
+    return result
+
+
 def _execute_code(code: str):
     """Execute CQGI code, retaining assembly metadata and reporting CAD errors."""
     try:
-        model = cqgi.parse(code)
-        result = model.build()
-        if result.exception:
-            tb = traceback.format_exception(
-                type(result.exception),
-                result.exception,
-                result.exception.__traceback__,
-            )
-            return None, f"Execution error:\n{''.join(tb)}"
-
+        result = _build_model(cqgi.parse(code))
         shape = _extract_shape(result)
         if shape is None:
             return None, "No shape produced. Use show_object(shape) or assign to 'result' variable."
+        geometry = _to_occ_shape(shape)
+        if not isinstance(geometry, cq.Shape):
+            raise TypeError("Expected a CadQuery Shape, Workplane, or Assembly.")
+        if geometry.isNull() or not (geometry.Vertices() or geometry.Edges() or geometry.Faces()):
+            return None, "No geometry produced. The model is empty."
         return shape, None
     except SyntaxError as e:
         return None, f"Syntax error: {e}"
-    except Exception as e:
-        return None, f"Execution error: {type(e).__name__}: {e}"
+    except Exception:
+        return None, f"Execution error:\n{traceback.format_exc()}"
 
 
 def render_svg(shape, view_name: str, width: int, height: int,
@@ -188,8 +223,14 @@ def render_png(shape, view_name: str, width: int, height: int) -> bytes:
     )
     renderer = vtkRenderer()
     renderer.SetBackground(0.95, 0.96, 0.98)
-    for actor in toVTKAssy(assembly, edges=False, tolerance=0.1):
-        renderer.AddActor(actor)
+    for part, _, location, color in assembly:
+        wire_only = not part.Faces()
+        rgba = color.toTuple() if color is not None else (1.0, 1.0, 1.0, 1.0)
+        leaf = cq.Assembly(part, loc=location, color=color)
+        for actor in toVTKAssy(leaf, edges=wire_only, edgecolor=rgba, tolerance=0.1):
+            if wire_only:
+                actor.GetProperty().SetOpacity(rgba[3])
+            renderer.AddActor(actor)
     window = vtkRenderWindow()
     try:
         window.SetOffScreenRendering(1)
