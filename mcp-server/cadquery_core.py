@@ -191,7 +191,8 @@ def _execute_code(code: str):
         return shape, None
     except SyntaxError as e:
         return None, f"Syntax error: {e}"
-    except Exception:
+    except (Exception, SystemExit):
+        # A script's sys.exit() must not stop the MCP server process.
         return None, f"Execution error:\n{traceback.format_exc()}"
 
 

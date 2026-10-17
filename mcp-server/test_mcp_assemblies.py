@@ -223,6 +223,13 @@ def test_stdio_round_trip_all_tools_and_error_flags(tmp_path):
                 assert {tool.name for tool in tools.tools} == {
                     "render", "inspect", "get_parameters", "export",
                 }
+                for exit_code in (0, 7, "stop building"):
+                    exited = await client.call_tool("inspect", {
+                        "code": f"import sys\nsys.exit({exit_code!r})",
+                    })
+                    assert exited.isError is True
+                    assert "SystemExit" in exited.content[0].text
+                # A normal model still executes after the scripts tried to exit.
                 printed_code = "print('building model', end='', flush=True)\n" + ASSEMBLY_CODE
                 inspected = await client.call_tool("inspect", {"code": printed_code})
                 assert not inspected.isError
@@ -541,3 +548,24 @@ show_object(box.translate((3, 0, 0)), name="lid", color="blue")
     shape, error = _execute_code(plain)
     assert error is None, error
     assert isinstance(shape, cq.Workplane)
+
+
+@pytest.mark.parametrize("exit_code", [None, 0, 7, "stop building"])
+def test_script_exit_is_a_cad_error(exit_code, capsys):
+    original_stdout = sys.stdout
+    code = f"import sys\nprint('exiting', end='', flush=True)\nsys.exit({exit_code!r})"
+    shape, error = _execute_code(code)
+    assert shape is None
+    assert error.startswith("Execution error:")
+    assert "SystemExit" in error
+    if exit_code is not None:
+        assert str(exit_code) in error
+    assert sys.stdout is original_stdout
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "exiting"
+
+
+def test_keyboard_interrupt_still_propagates():
+    with pytest.raises(KeyboardInterrupt):
+        _execute_code("raise KeyboardInterrupt")
