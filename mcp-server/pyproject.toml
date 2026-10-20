@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cadquery-mcp"
-version = "0.1.0"
-description = "MCP (Model Context Protocol) server for CadQuery - enables AI assistants to create 3D CAD models"
+version = "0.2.0"
+description = "MCP server for CadQuery - enables AI assistants to create and inspect 3D CAD models"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
@@ -30,8 +30,8 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "cadquery>=2.4.0",
-    "mcp>=1.0.0",
+    "cadquery>=2.8.0,<3",
+    "mcp>=1.30.0,<2",
 ]
 
 [project.urls]
@@ -43,4 +43,4 @@ Documentation = "https://github.com/CadQuery/cadquery-contrib/tree/master/mcp-se
 cadquery-mcp = "cadquery_mcp_server:run"
 
 [tool.setuptools]
-py-modules = ["cadquery_mcp_server"]
+py-modules = ["cadquery_core", "cadquery_mcp_server"]
