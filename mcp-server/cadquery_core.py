@@ -395,7 +395,13 @@ def handle_export(code: str, filename: str,
             if isinstance(shape, cq.Assembly) and fmt == "STEP":
                 shape.export(str(temporary), exportType=fmt)
             else:
-                export(_to_occ_shape(shape), str(temporary), exportType=fmt)
+                # DXF maps a Workplane's local sketch coordinates into XY.
+                # Flattening it first discards the plane needed for that map.
+                geometry = (
+                    shape if fmt == "DXF" and isinstance(shape, cq.Workplane)
+                    else _to_occ_shape(shape)
+                )
+                export(geometry, str(temporary), exportType=fmt)
             if not temporary.is_file() or temporary.stat().st_size == 0:
                 raise RuntimeError("Exporter did not write a non-empty file.")
             temporary.replace(destination)
