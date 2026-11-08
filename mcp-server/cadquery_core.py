@@ -225,13 +225,22 @@ def render_png(shape, view_name: str, width: int, height: int) -> bytes:
     renderer = vtkRenderer()
     renderer.SetBackground(0.95, 0.96, 0.98)
     for part, _, location, color in assembly:
-        wire_only = not part.Faces()
+        faces = part.Faces()
+        render_parts = [(part, not faces)]
+        if faces:
+            # Keep face boundaries shaded, but do not hide independent edges
+            # just because their compound also contains faces.
+            face_edges = {edge for face in faces for edge in face.Edges()}
+            loose_edges = [edge for edge in part.Edges() if edge not in face_edges]
+            if loose_edges:
+                render_parts.append((cq.Compound.makeCompound(loose_edges), True))
         rgba = color.toTuple() if color is not None else (1.0, 1.0, 1.0, 1.0)
-        leaf = cq.Assembly(part, loc=location, color=color)
-        for actor in toVTKAssy(leaf, edges=wire_only, edgecolor=rgba, tolerance=0.1):
-            if wire_only:
-                actor.GetProperty().SetOpacity(rgba[3])
-            renderer.AddActor(actor)
+        for geometry, wire_only in render_parts:
+            leaf = cq.Assembly(geometry, loc=location, color=color)
+            for actor in toVTKAssy(leaf, edges=wire_only, edgecolor=rgba, tolerance=0.1):
+                if wire_only:
+                    actor.GetProperty().SetOpacity(rgba[3])
+                renderer.AddActor(actor)
     window = vtkRenderWindow()
     try:
         window.SetOffScreenRendering(1)
