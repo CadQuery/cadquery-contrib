@@ -304,6 +304,10 @@ def handle_inspect(code: str) -> TextResult:
 
         shape = _to_occ_shape(shape)
         bb = shape.BoundingBox()
+        # CadQuery uses length/area for edges/faces, and a compound's first
+        # child determines the mass dimension. Use only solids for volume
+        # properties so loose geometry cannot change them.
+        solids = shape.Solids()
         lines = [
             "Geometry Information:",
             "  Bounding Box:",
@@ -313,7 +317,7 @@ def handle_inspect(code: str) -> TextResult:
         ]
 
         try:
-            lines.append(f"  Volume: {shape.Volume():.4f}")
+            lines.append(f"  Volume: {sum(solid.Volume() for solid in solids):.4f}")
         except Exception:
             pass
 
@@ -323,7 +327,7 @@ def handle_inspect(code: str) -> TextResult:
             pass
 
         try:
-            com = shape.Center()
+            com = cq.Shape.CombinedCenter(solids) if solids else shape.Center()
             lines.append(f"  Center of Mass: ({com.x:.4f}, {com.y:.4f}, {com.z:.4f})")
         except Exception:
             pass
