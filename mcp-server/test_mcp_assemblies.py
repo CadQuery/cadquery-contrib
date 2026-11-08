@@ -244,6 +244,21 @@ def test_stdio_round_trip_all_tools_and_error_flags(tmp_path):
                 assert not png.isError
                 assert png.content[0].mimeType == "image/png"
                 assert_png(base64.b64decode(png.content[0].data))
+                mixed_code = (
+                    "box = cq.Solid.makeBox(10, 10, 10)\n"
+                    "edge = cq.Edge.makeLine((20, 0, 5), (20, 10, 5))\n"
+                )
+                mixed_png = await client.call_tool("render", {
+                    "code": mixed_code + "result = cq.Compound.makeCompound([box, edge])",
+                    "view": "top", "width": 320, "height": 240,
+                })
+                assert not mixed_png.isError
+                reference = handle_render(
+                    mixed_code + 'result = cq.Assembly(color=cq.Color(0.7, 0.75, 0.8)).add(box).add(edge)',
+                    image_format="png", view="top", width=320, height=240,
+                )
+                assert reference.error is None, reference.error
+                assert base64.b64decode(mixed_png.content[0].data) == reference.images[0]
                 svg = await client.call_tool("render", {
                     "code": ASSEMBLY_CODE, "image_format": "svg",
                 })
@@ -569,3 +584,53 @@ def test_script_exit_is_a_cad_error(exit_code, capsys):
 def test_keyboard_interrupt_still_propagates():
     with pytest.raises(KeyboardInterrupt):
         _execute_code("raise KeyboardInterrupt")
+
+
+@pytest.mark.parametrize("mixed", [
+    "cq.Compound.makeCompound([box, edge])",
+    'cq.Workplane("XY").newObject([box, edge])',
+])
+@pytest.mark.parametrize("alpha", [1.0, 0.4])
+@pytest.mark.parametrize("edge", [
+    "cq.Edge.makeLine((20, 0, 5), (20, 10, 5))",
+    'cq.Workplane("XY").circle(4).val().translate((20, 5, 5))',
+])
+def test_png_mixed_leaf_matches_separate_parts(mixed, alpha, edge, tmp_path):
+    import numpy as np
+
+    setup = f"""
+box = cq.Solid.makeBox(10, 10, 10)
+edge = {edge}
+color = cq.Color(0.7, 0.75, 0.8, {alpha})
+location = cq.Location((100, 50, 10), (0, 0, 1), 35)
+result = cq.Assembly(loc=location, color=color)
+"""
+    expected = handle_render(
+        setup + 'result.add(box, name="box").add(edge, name="edge")',
+        image_format="png", view="top", width=320, height=240,
+    )
+    actual = handle_render(
+        setup + f'result.add({mixed}, name="mixed")',
+        image_format="png", view="top", width=320, height=240,
+    )
+    assert expected.error is None, expected.error
+    assert actual.error is None, actual.error
+    expected_pixels = png_pixels(expected.images[0], tmp_path)
+    actual_pixels = png_pixels(actual.images[0], tmp_path)
+    np.testing.assert_array_equal(actual_pixels, expected_pixels)
+
+
+def test_png_face_boundaries_do_not_become_loose_edges(tmp_path):
+    import numpy as np
+
+    setup = "box = cq.Solid.makeBox(10, 10, 10)\n"
+    expected = handle_render(setup + "result = box", image_format="png",
+                             view="isometric", width=320, height=240)
+    actual = handle_render(
+        setup + "result = cq.Compound.makeCompound([box, box.Edges()[0]])",
+        image_format="png", view="isometric", width=320, height=240,
+    )
+    assert expected.error is None, expected.error
+    assert actual.error is None, actual.error
+    np.testing.assert_array_equal(png_pixels(actual.images[0], tmp_path),
+                                  png_pixels(expected.images[0], tmp_path))
