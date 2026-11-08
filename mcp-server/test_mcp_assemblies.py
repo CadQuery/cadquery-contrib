@@ -234,6 +234,18 @@ def test_stdio_round_trip_all_tools_and_error_flags(tmp_path):
                 inspected = await client.call_tool("inspect", {"code": printed_code})
                 assert not inspected.isError
                 assert "Solids: 2" in inspected.content[0].text
+                # Loose geometry must not supply the dimension of solid mass
+                # properties, including through the actual MCP transport.
+                for parts in (
+                    "[cq.Edge.makeLine((100, 0, 0), (110, 0, 0)), cq.Solid.makeBox(2, 3, 4)]",
+                    "[cq.Solid.makeBox(2, 3, 4), cq.Edge.makeLine((100, 0, 0), (110, 0, 0))]",
+                ):
+                    mixed = await client.call_tool("inspect", {
+                        "code": f"result = cq.Compound.makeCompound({parts})",
+                    })
+                    assert not mixed.isError
+                    assert "Volume: 24.0000" in mixed.content[0].text
+                    assert "Center of Mass: (1.0000, 1.5000, 2.0000)" in mixed.content[0].text
                 params_result = await client.call_tool("get_parameters", {"code": ASSEMBLY_CODE})
                 assert not params_result.isError
                 assert "size:" in params_result.content[0].text
@@ -569,3 +581,40 @@ def test_script_exit_is_a_cad_error(exit_code, capsys):
 def test_keyboard_interrupt_still_propagates():
     with pytest.raises(KeyboardInterrupt):
         _execute_code("raise KeyboardInterrupt")
+
+
+@pytest.mark.parametrize("expression, volume, center", [
+    ('cq.Edge.makeLine((0, 0, 0), (10, 0, 0))', 0, (5, 0, 0)),
+    ('cq.Workplane("XY").rect(10, 20)', 0, (0, 0, 0)),
+    ('cq.Face.makePlane(10, 20)', 0, (0, 0, 0)),
+    ('cq.Solid.makeBox(2, 3, 4)', 24, (1, 1.5, 2)),
+    ('cq.Shell.makeShell(cq.Solid.makeBox(2, 3, 4).Faces())', 0, (1, 1.5, 2)),
+])
+def test_inspect_volume_uses_only_solids(expression, volume, center):
+    result = handle_inspect(f"result = {expression}")
+    assert result.error is None, result.error
+    assert f"  Volume: {volume:.4f}" in result.text
+    # Some kernel centroids format zero as -0.0000.
+    center_line = next(line for line in result.text.splitlines()
+                       if "Center of Mass:" in line)
+    actual = tuple(float(value) for value in center_line.split("(")[1][:-1].split(","))
+    assert actual == pytest.approx(center, abs=1e-4)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_inspect_mixed_dimensions_uses_solid_mass_properties(reverse):
+    code = f"""
+parts = [cq.Edge.makeLine((100, 0, 0), (110, 0, 0)),
+         cq.Face.makePlane(10, 20),
+         cq.Solid.makeBox(2, 3, 4),
+         cq.Solid.makeBox(4, 3, 4).translate((10, 0, 0))]
+result = cq.Compound.makeCompound(parts[::{'-1' if reverse else '1'}])
+"""
+    result = handle_inspect(code)
+    assert result.error is None, result.error
+    assert "  Volume: 72.0000" in result.text
+    assert "  Center of Mass: (8.3333, 1.5000, 2.0000)" in result.text
+    assert "Solids: 2" in result.text
+    assert "Faces: 13" in result.text
+    # Inspection must still include the loose edge in the overall bounds.
+    assert "X: -10.0000 to 110.0000" in result.text

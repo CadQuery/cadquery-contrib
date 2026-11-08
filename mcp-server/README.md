@@ -243,6 +243,12 @@ Get geometry information about the resulting shape.
 |-----------|------|---------|-------------|
 | code | string | required | CadQuery Python code to execute |
 
+Volume is the sum of the contained solids' volumes; edges, wires, faces, and
+shells without solids report zero volume. For models containing solids, the
+center of mass is their volume-weighted centroid. For models without solids,
+CadQuery's geometry center is reported. Bounds, surface area, and topology
+continue to describe the complete model, including loose geometry.
+
 ### get_parameters
 
 Extract customizable parameters from a script.
