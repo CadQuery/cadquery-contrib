@@ -256,6 +256,17 @@ def test_stdio_round_trip_all_tools_and_error_flags(tmp_path):
                 assert not exported.isError
                 assert exported.content[0].text == f"Exported to: {filename}"
                 assert_bounds(cq.importers.importStep(str(filename)).val())
+                dxf = tmp_path / "profile.dxf"
+                profile = await client.call_tool("export", {
+                    "code": 'result = cq.Workplane("YZ", origin=(5, 6, 7)).rect(10, 20)',
+                    "filename": str(dxf),
+                })
+                assert not profile.isError
+                import ezdxf
+                from ezdxf import bbox
+                bounds = bbox.extents(ezdxf.readfile(dxf).modelspace())
+                assert tuple(bounds.extmin) == pytest.approx((-5, -10, 0))
+                assert tuple(bounds.extmax) == pytest.approx((5, 10, 0))
                 failed = await client.call_tool("export", {
                     "code": ASSEMBLY_CODE, "filename": str(tmp_path / "missing" / "fail.step"),
                 })
@@ -569,3 +580,36 @@ def test_script_exit_is_a_cad_error(exit_code, capsys):
 def test_keyboard_interrupt_still_propagates():
     with pytest.raises(KeyboardInterrupt):
         _execute_code("raise KeyboardInterrupt")
+
+
+@pytest.mark.parametrize("plane", ["XY", "XZ", "YZ"])
+def test_dxf_export_preserves_workplane_coordinates(plane, tmp_path):
+    import ezdxf
+    from ezdxf import bbox
+
+    filename = tmp_path / "profile.dxf"
+    code = f"result = cq.Workplane({plane!r}, origin=(5, 6, 7)).rect(10, 20)"
+    result = handle_export(code, str(filename))
+    assert result.error is None, result.error
+    entities = ezdxf.readfile(filename).modelspace()
+    assert len(entities) == 4
+    bounds = bbox.extents(entities)
+    assert tuple(bounds.extmin) == pytest.approx((-5, -10, 0))
+    assert tuple(bounds.extmax) == pytest.approx((5, 10, 0))
+
+
+def test_dxf_export_keeps_all_workplane_wires(tmp_path):
+    import ezdxf
+    from ezdxf import bbox
+
+    filename = tmp_path / "profiles.dxf"
+    result = handle_export(
+        'result = cq.Workplane("YZ", origin=(5, 6, 7)).pushPoints([(0, 0), (30, 0)]).rect(10, 20)',
+        str(filename),
+    )
+    assert result.error is None, result.error
+    entities = ezdxf.readfile(filename).modelspace()
+    assert len(entities) == 8
+    bounds = bbox.extents(entities)
+    assert tuple(bounds.extmin) == pytest.approx((-5, -10, 0))
+    assert tuple(bounds.extmax) == pytest.approx((35, 10, 0))
